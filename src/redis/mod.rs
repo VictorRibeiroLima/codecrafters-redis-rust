@@ -1,6 +1,11 @@
 use std::collections::{HashMap, HashSet};
 
-use self::{replication::Replication, value::Value};
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    net::TcpStream,
+};
+
+use self::{replication::Replication, types::RedisType, value::Value};
 
 mod replication;
 pub mod types;
@@ -16,12 +21,14 @@ pub struct Redis {
 }
 
 impl Redis {
-    pub fn new(port: u16, replica_of: Option<(String, u16)>) -> Self {
-        Self {
+    pub async fn new(port: u16, replica_of: Option<(String, u16)>) -> Self {
+        let redis = Self {
             port,
             replication: Replication::new(replica_of),
             ..Default::default()
-        }
+        };
+        redis.hand_shake().await;
+        redis
     }
 
     pub fn set(&mut self, key: String, value: String, expiration: Option<u128>) {
@@ -62,5 +69,61 @@ impl Redis {
 
     pub fn replication_info(&self) -> String {
         self.replication.to_string()
+    }
+
+    async fn hand_shake(&self) {
+        if let Some((host, port)) = &self.replication.replica_of {
+            //PING
+            let mut stream = TcpStream::connect((host.clone(), *port))
+                .await
+                .expect("Failed to connect to master");
+            let ping_command = RedisType::Array(vec![RedisType::BulkString("PING".to_string())]);
+            let ping_command = ping_command.encode();
+            stream
+                .write_all(&ping_command)
+                .await
+                .expect("Failed to write to master");
+            let mut buffer = [0; 128];
+            stream
+                .read(&mut buffer)
+                .await
+                .expect("Failed to read from master");
+
+            //REPLCONF listening-port
+            let command = RedisType::Array(vec![
+                RedisType::BulkString("REPLCONF".to_string()),
+                RedisType::BulkString("listening-port".to_string()),
+                RedisType::BulkString(self.port.to_string()),
+            ]);
+            let command = command.encode();
+            stream
+                .write_all(&command)
+                .await
+                .expect("Failed to write to master");
+
+            let mut buffer = [0; 128];
+            stream
+                .read(&mut buffer)
+                .await
+                .expect("Failed to read from master");
+
+            //REPLCONF capa psync2
+            let command = RedisType::Array(vec![
+                RedisType::BulkString("REPLCONF".to_string()),
+                RedisType::BulkString("capa".to_string()),
+                RedisType::BulkString("psync2".to_string()),
+            ]);
+            let command = command.encode();
+            stream
+                .write_all(&command)
+                .await
+                .expect("Failed to write to master");
+
+            let mut buffer = [0; 128];
+            stream
+                .read(&mut buffer)
+                .await
+                .expect("Failed to read from master");
+        }
     }
 }

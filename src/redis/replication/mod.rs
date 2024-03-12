@@ -28,6 +28,7 @@ impl Replication {
         Self {
             role,
             master_replid: String::from("8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"),
+            replica_of,
             ..Default::default()
         }
     }
