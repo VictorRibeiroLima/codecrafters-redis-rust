@@ -9,10 +9,12 @@ mod args;
 mod client;
 mod redis;
 
+const HOST: &str = "127.0.0.1";
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = args::Args::parse()?;
-    let addr = format!("127.0.0.1:{}", args.port);
+    let addr = format!("{}:{}", HOST, args.port);
     let listener = TcpListener::bind(addr).await?;
     let redis = redis::Redis::new(args.port, args.replica_of).await;
     let redis = Arc::new(RwLock::new(redis));

@@ -25,8 +25,10 @@ impl Client {
 
     pub async fn handle_stream(&mut self) -> Result<()> {
         let mut buf = [0; 512];
+
         loop {
-            let n = self.stream.read(&mut buf).await?;
+            let (mut reader, mut writer) = self.stream.split();
+            let n = reader.read(&mut buf).await?;
             if n == 0 {
                 break;
             }
@@ -35,14 +37,12 @@ impl Client {
                 Ok((c, a)) => (c, a),
                 Err(e) => {
                     println!("{}", e);
-                    self.stream.write_all(e.as_bytes()).await?;
+                    writer.write_all(e.as_bytes()).await?;
                     continue;
                 }
             };
 
-            let response = command::handle_command(command, args, &self.redis).await;
-            let bytes = response.encode();
-            self.stream.write_all(&bytes).await?;
+            let response = command::handle_command(command, args, &self.redis, &mut writer).await;
         }
 
         Ok(())

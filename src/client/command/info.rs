@@ -22,9 +22,11 @@ everything: Includes all and modules
 
 use std::{str::FromStr, sync::Arc};
 
-use tokio::sync::RwLock;
+use tokio::{io::AsyncWriteExt, net::tcp::WriteHalf, sync::RwLock};
 
 use crate::redis::{types::RedisType, Redis};
+
+use super::Handler;
 
 #[derive(Debug, PartialEq)]
 enum InfoCommand {
@@ -76,22 +78,35 @@ impl FromStr for InfoCommand {
     }
 }
 
-pub async fn handle_info(args: Vec<&str>, redis: &Arc<RwLock<Redis>>) -> RedisType {
-    let mut response = String::new();
-    let command_str = args.get(0).unwrap_or(&"default");
-    let command = match InfoCommand::from_str(command_str) {
-        Ok(command) => command,
-        Err(e) => return e,
-    };
-    let redis = redis.read().await;
+pub struct InfoHandler;
 
-    match command {
-        InfoCommand::REPLICATION => {
-            response.push_str(&redis.replication_info());
-        }
-        _ => {
-            return RedisType::Error("ERR unknown info command".to_string());
-        }
-    };
-    return RedisType::BulkString(response);
+impl Handler for InfoHandler {
+    async fn handle(args: Vec<&str>, redis: &Arc<RwLock<Redis>>, stream: &mut WriteHalf<'_>) {
+        let mut response = String::new();
+        let command_str = args.get(0).unwrap_or(&"default");
+        let command = match InfoCommand::from_str(command_str) {
+            Ok(command) => command,
+            Err(e) => {
+                let response = e.encode();
+                let _ = stream.write_all(&response).await;
+                return;
+            }
+        };
+        let redis = redis.read().await;
+
+        match command {
+            InfoCommand::REPLICATION => {
+                response.push_str(&redis.replication_info());
+            }
+            _ => {
+                let response = RedisType::Error("ERR unknown info command".to_string());
+                let bytes = response.encode();
+                let _ = stream.write_all(&bytes).await;
+                return;
+            }
+        };
+        let response = RedisType::BulkString(response);
+        let bytes = response.encode();
+        let _ = stream.write_all(&bytes).await;
+    }
 }

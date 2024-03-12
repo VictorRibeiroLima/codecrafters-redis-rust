@@ -1,10 +1,22 @@
 use std::sync::Arc;
 
-use tokio::sync::RwLock;
+use tokio::{io::AsyncWriteExt, net::tcp::WriteHalf, sync::RwLock};
 
 use crate::redis::{types::RedisType, Redis};
 
-pub async fn handle_psync(args: Vec<&str>, redis: &Arc<RwLock<Redis>>) -> RedisType {
+use super::Handler;
+
+pub struct PsyncHandler;
+
+impl Handler for PsyncHandler {
+    async fn handle<'a>(args: Vec<&str>, redis: &Arc<RwLock<Redis>>, writer: &mut WriteHalf<'a>) {
+        let response = handle_psync(args, redis).await;
+        let bytes = response.encode();
+        let _ = writer.write_all(&bytes).await;
+        //TODO: Send RDB file
+    }
+}
+async fn handle_psync(args: Vec<&str>, redis: &Arc<RwLock<Redis>>) -> RedisType {
     let _ = match args.get(0) {
         Some(id) => id,
         None => return RedisType::Error("ERR invalid id".to_string()),

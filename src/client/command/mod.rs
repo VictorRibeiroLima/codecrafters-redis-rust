@@ -1,13 +1,21 @@
 use std::{str::FromStr, sync::Arc};
 
-use tokio::sync::RwLock;
+use tokio::{net::tcp::WriteHalf, sync::RwLock};
 
-use crate::redis::{types::RedisType, Redis};
+use crate::redis::Redis;
 
+mod echo;
+mod get;
 mod info;
+mod ping;
+
 mod psync;
 mod repl_conf;
 mod set;
+
+trait Handler {
+    async fn handle<'a>(args: Vec<&str>, redis: &Arc<RwLock<Redis>>, writer: &mut WriteHalf<'a>);
+}
 
 #[derive(Debug, PartialEq)]
 pub enum Command {
@@ -37,40 +45,19 @@ impl FromStr for Command {
     }
 }
 
-pub async fn handle_command(
+pub async fn handle_command<'a>(
     command: Command,
     args: Vec<&str>,
-    redis: &Arc<RwLock<Redis>>,
-) -> RedisType {
+    redis: &'a Arc<RwLock<Redis>>,
+    writer: &'a mut WriteHalf<'a>,
+) {
     match command {
-        Command::Ping => handle_ping(),
-        Command::Echo => handle_echo(args),
-        Command::Set => set::handle_set(args, redis).await,
-        Command::Get => handle_get(args, redis).await,
-        Command::Info => info::handle_info(args, redis).await,
-        Command::ReplConf => repl_conf::handle_repl_conf(args, redis).await,
-        Command::Psync => psync::handle_psync(args, redis).await,
-    }
-}
-
-fn handle_ping() -> RedisType {
-    RedisType::SimpleString("PONG".to_string())
-}
-
-fn handle_echo(args: Vec<&str>) -> RedisType {
-    let first_arg = args.get(0).unwrap_or(&"");
-    let str = format!("{}", first_arg);
-    RedisType::SimpleString(str)
-}
-
-async fn handle_get(args: Vec<&str>, redis: &Arc<RwLock<Redis>>) -> RedisType {
-    let key = match args.get(0) {
-        Some(key) => key.to_string(),
-        None => return RedisType::NullBulkString,
+        Command::Ping => ping::PingHandler::handle(args, redis, writer).await,
+        Command::Echo => echo::EchoHandler::handle(args, redis, writer).await,
+        Command::Set => set::SetHandler::handle(args, redis, writer).await,
+        Command::Get => get::GetHandler::handle(args, redis, writer).await,
+        Command::Info => info::InfoHandler::handle(args, redis, writer).await,
+        Command::ReplConf => repl_conf::ReplConfHandler::handle(args, redis, writer).await,
+        Command::Psync => psync::PsyncHandler::handle(args, redis, writer).await,
     };
-    let redis = redis.read().await;
-    match redis.get(&key) {
-        Some(value) => RedisType::BulkString(value.to_string()),
-        None => RedisType::NullBulkString,
-    }
 }

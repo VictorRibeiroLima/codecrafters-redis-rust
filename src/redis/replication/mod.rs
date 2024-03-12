@@ -1,6 +1,9 @@
 use std::fmt::Display;
 
+use tokio::{io::AsyncWriteExt, net::TcpStream};
+
 use self::role::Role;
+use std::sync::Arc;
 
 mod role;
 
@@ -10,12 +13,13 @@ pub struct Replication {
     pub role: Role,
     pub connected_slaves: usize,
     pub master_replid: String,
-    pub master_repl_offset: i32,
+    pub master_repl_offset: u64,
     pub second_repl_offset: i32,
     pub repl_backlog_active: i32,
     pub repl_backlog_size: i32,
     pub repl_backlog_first_byte_offset: i32,
     pub repl_backlog_histlen: i32,
+    pub replicas: Vec<(String, u16)>,
 }
 
 impl Replication {
@@ -30,6 +34,28 @@ impl Replication {
             master_replid: String::from("8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"),
             replica_of,
             ..Default::default()
+        }
+    }
+
+    pub fn add_replica(&mut self, replica: (String, u16)) {
+        self.connected_slaves += 1;
+        self.replicas.push(replica);
+    }
+
+    pub fn propagate_message(&mut self, message: Vec<u8>) {
+        self.master_repl_offset += message.len() as u64;
+        let replicas = Arc::new(self.replicas.clone());
+        for replica in replicas.iter().cloned() {
+            let message = message.clone();
+            tokio::spawn(async move {
+                let stream = TcpStream::connect(replica).await;
+                let stream = match stream {
+                    Ok(stream) => stream,
+                    Err(_) => return,
+                };
+                let mut stream = stream;
+                let _ = stream.write_all(&message).await;
+            });
         }
     }
 }
