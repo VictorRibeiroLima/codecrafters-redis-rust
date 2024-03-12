@@ -41,7 +41,7 @@ impl Client {
             };
 
             let response = command::handle_command(command, args, &self.redis).await;
-            let bytes = response.as_bytes();
+            let bytes = response.encode();
             self.stream.write_all(&bytes).await?;
         }
 

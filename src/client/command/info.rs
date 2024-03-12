@@ -24,7 +24,7 @@ use std::{str::FromStr, sync::Arc};
 
 use tokio::sync::RwLock;
 
-use crate::redis::Redis;
+use crate::redis::{types::RedisType, Redis};
 
 #[derive(Debug, PartialEq)]
 enum InfoCommand {
@@ -48,7 +48,7 @@ enum InfoCommand {
 }
 
 impl FromStr for InfoCommand {
-    type Err = String;
+    type Err = RedisType;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_uppercase().as_str() {
@@ -69,12 +69,14 @@ impl FromStr for InfoCommand {
             "ALL" => Ok(InfoCommand::ALL),
             "DEFAULT" => Ok(InfoCommand::DEFAULT),
             "EVERYTHING" => Ok(InfoCommand::EVERYTHING),
-            _ => Err("-ERR unknown info command\r\n".to_string()),
+            _ => Err(RedisType::SimpleString(
+                "-ERR unknown info command".to_string(),
+            )),
         }
     }
 }
 
-pub async fn handle_info(args: Vec<&str>, redis: &Arc<RwLock<Redis>>) -> String {
+pub async fn handle_info(args: Vec<&str>, redis: &Arc<RwLock<Redis>>) -> RedisType {
     let mut response = String::new();
     let command_str = args.get(0).unwrap_or(&"default");
     let command = match InfoCommand::from_str(command_str) {
@@ -88,8 +90,8 @@ pub async fn handle_info(args: Vec<&str>, redis: &Arc<RwLock<Redis>>) -> String 
             response.push_str(&redis.replication_info());
         }
         _ => {
-            return "-ERR unsupported info command\r\n".to_string();
+            return RedisType::Error("ERR unknown info command".to_string());
         }
     };
-    return response;
+    return RedisType::BulkString(response);
 }

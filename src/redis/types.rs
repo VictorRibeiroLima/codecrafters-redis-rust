@@ -1,27 +1,28 @@
-pub struct BulkString {
-    pub lines: Vec<String>,
+#[derive(Debug, PartialEq, Clone)]
+#[allow(dead_code)]
+pub enum RedisType {
+    SimpleString(String),
+    Error(String),
+    BulkString(String),
+    NullBulkString,
+    Integer(i64),
+    Array(Vec<RedisType>),
 }
-
-impl BulkString {
-    pub fn new() -> Self {
-        Self { lines: Vec::new() }
-    }
-
-    pub fn push(&mut self, line: String) {
-        self.lines.push(line);
-    }
-
-    pub fn encode(&self) -> String {
-        let mut bulk_string = String::from("*");
-        bulk_string.push_str(&self.lines.len().to_string());
-        bulk_string.push_str("\r\n");
-        for line in &self.lines {
-            bulk_string.push_str("$");
-            bulk_string.push_str(&line.len().to_string());
-            bulk_string.push_str("\r\n");
-            bulk_string.push_str(&line);
-            bulk_string.push_str("\r\n");
+impl RedisType {
+    pub fn encode(&self) -> Vec<u8> {
+        match self {
+            RedisType::SimpleString(value) => format!("+{value}\r\n").into_bytes(),
+            RedisType::Error(value) => format!("-{value}\r\n").into_bytes(),
+            RedisType::Integer(value) => format!(":{value}\r\n").into_bytes(),
+            RedisType::BulkString(value) => {
+                format!("${}\r\n{value}\r\n", value.chars().count()).into_bytes()
+            }
+            RedisType::NullBulkString => b"$-1\r\n".to_vec(),
+            RedisType::Array(values) => {
+                let mut result = format!("*{}\r\n", values.len()).into_bytes();
+                result.extend(values.iter().flat_map(|v| v.encode()));
+                result
+            }
         }
-        bulk_string
     }
 }

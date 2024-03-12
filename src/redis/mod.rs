@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use self::{replication::Replication, value::Value};
 
 mod replication;
-mod types;
+pub mod types;
 mod value;
 
 #[derive(Debug, Default)]
