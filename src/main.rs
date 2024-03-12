@@ -3,7 +3,7 @@ use std::sync::Arc;
 // Uncomment this block to pass the first stage
 use anyhow::Result;
 
-use tokio::{net::TcpListener, sync::Mutex};
+use tokio::{net::TcpListener, sync::RwLock};
 
 mod args;
 mod client;
@@ -15,7 +15,7 @@ async fn main() -> Result<()> {
     let addr = format!("127.0.0.1:{}", args.port);
     let listener = TcpListener::bind(addr).await?;
     let redis = redis::Redis::new(args.port, args.replica_of);
-    let redis = Arc::new(Mutex::new(redis));
+    let redis = Arc::new(RwLock::new(redis));
     tokio::spawn(start_expiration_thread(Arc::clone(&redis)));
 
     loop {
@@ -30,10 +30,10 @@ async fn main() -> Result<()> {
     }
 }
 
-async fn start_expiration_thread(redis: Arc<Mutex<redis::Redis>>) {
+async fn start_expiration_thread(redis: Arc<RwLock<redis::Redis>>) {
     loop {
         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-        let mut redis = redis.lock().await;
+        let mut redis = redis.write().await;
         redis.expire_keys();
     }
 }

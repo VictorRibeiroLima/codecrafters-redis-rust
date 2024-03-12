@@ -4,7 +4,7 @@ use anyhow::Result;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
-    sync::Mutex,
+    sync::RwLock,
 };
 
 use crate::redis::Redis;
@@ -15,11 +15,11 @@ mod command;
 
 pub struct Client {
     stream: TcpStream,
-    redis: Arc<Mutex<Redis>>,
+    redis: Arc<RwLock<Redis>>,
 }
 
 impl Client {
-    pub fn new(stream: TcpStream, redis: Arc<Mutex<Redis>>) -> Self {
+    pub fn new(stream: TcpStream, redis: Arc<RwLock<Redis>>) -> Self {
         Client { stream, redis }
     }
 
@@ -42,7 +42,9 @@ impl Client {
 
             let response = command::handle_command(command, args, &self.redis).await;
             let bytes = response.as_bytes();
-            self.stream.write_all(bytes).await?;
+            println!("{}", response);
+            println!("{}", bytes.len());
+            self.stream.write_all(&bytes).await?;
         }
 
         Ok(())

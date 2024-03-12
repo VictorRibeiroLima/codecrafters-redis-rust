@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
-use tokio::sync::Mutex;
+use tokio::sync::RwLock;
 
 use crate::redis::Redis;
 
-pub async fn handle_set(args: Vec<&str>, redis: &Arc<Mutex<Redis>>) -> String {
+pub async fn handle_set(args: Vec<&str>, redis: &Arc<RwLock<Redis>>) -> String {
     let key = match args.get(0) {
         Some(key) => key.to_string(),
         None => return "-ERR missing key\r\n".to_string(),
@@ -30,7 +30,7 @@ pub async fn handle_set(args: Vec<&str>, redis: &Arc<Mutex<Redis>>) -> String {
         }
         None => None,
     };
-    let mut redis = redis.lock().await;
+    let mut redis = redis.write().await;
     redis.set(key, value, expires_in);
     "+OK\r\n".to_string()
 }

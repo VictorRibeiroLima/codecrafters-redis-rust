@@ -22,7 +22,7 @@ everything: Includes all and modules
 
 use std::{str::FromStr, sync::Arc};
 
-use tokio::sync::Mutex;
+use tokio::sync::RwLock;
 
 use crate::redis::Redis;
 
@@ -74,14 +74,14 @@ impl FromStr for InfoCommand {
     }
 }
 
-pub async fn handle_info(args: Vec<&str>, redis: &Arc<Mutex<Redis>>) -> String {
+pub async fn handle_info(args: Vec<&str>, redis: &Arc<RwLock<Redis>>) -> String {
     let mut response = String::new();
     let command_str = args.get(0).unwrap_or(&"default");
     let command = match InfoCommand::from_str(command_str) {
         Ok(command) => command,
         Err(e) => return e,
     };
-    let redis = redis.lock().await;
+    let redis = redis.read().await;
 
     match command {
         InfoCommand::REPLICATION => {

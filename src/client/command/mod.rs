@@ -1,6 +1,6 @@
 use std::{str::FromStr, sync::Arc};
 
-use tokio::sync::Mutex;
+use tokio::sync::RwLock;
 
 use crate::redis::Redis;
 
@@ -34,7 +34,7 @@ impl FromStr for Command {
 pub async fn handle_command(
     command: Command,
     args: Vec<&str>,
-    redis: &Arc<Mutex<Redis>>,
+    redis: &Arc<RwLock<Redis>>,
 ) -> String {
     match command {
         Command::Ping => handle_ping(),
@@ -54,12 +54,12 @@ fn handle_echo(args: Vec<&str>) -> String {
     format!("+{}\r\n", first_arg)
 }
 
-async fn handle_get(args: Vec<&str>, redis: &Arc<Mutex<Redis>>) -> String {
+async fn handle_get(args: Vec<&str>, redis: &Arc<RwLock<Redis>>) -> String {
     let key = match args.get(0) {
         Some(key) => key.to_string(),
         None => return "$-1\r\n".to_string(),
     };
-    let redis = redis.lock().await;
+    let redis = redis.read().await;
     match redis.get(&key) {
         Some(value) => {
             let len = value.len();
