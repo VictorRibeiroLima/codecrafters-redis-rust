@@ -11,7 +11,6 @@ mod redis;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // already done with this part
     let args = args::Args::parse()?;
     let addr = format!("127.0.0.1:{}", args.port);
     let listener = TcpListener::bind(addr).await?;

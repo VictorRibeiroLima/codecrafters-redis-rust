@@ -18,6 +18,7 @@ pub async fn handle_psync(args: Vec<&str>, redis: &Arc<RwLock<Redis>>) -> RedisT
     };
     let redis = redis.read().await;
     let redis_id = redis.replication.master_replid.clone();
-    let resp = format!("FULLRESYNC {} 0", redis_id);
+    let offset = redis.replication.master_repl_offset;
+    let resp = format!("FULLRESYNC {} {}", redis_id, offset);
     return RedisType::SimpleString(resp);
 }
