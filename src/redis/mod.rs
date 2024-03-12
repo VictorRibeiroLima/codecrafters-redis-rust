@@ -17,7 +17,7 @@ pub struct Redis {
     port: u16,
     memory: HashMap<String, Value>,
     keys: HashSet<String>,
-    replication: Replication,
+    pub replication: Replication,
 }
 
 impl Redis {
@@ -112,6 +112,24 @@ impl Redis {
                 RedisType::BulkString("REPLCONF".to_string()),
                 RedisType::BulkString("capa".to_string()),
                 RedisType::BulkString("psync2".to_string()),
+            ]);
+            let command = command.encode();
+            stream
+                .write_all(&command)
+                .await
+                .expect("Failed to write to master");
+
+            let mut buffer = [0; 128];
+            stream
+                .read(&mut buffer)
+                .await
+                .expect("Failed to read from master");
+
+            //PSYNC
+            let command = RedisType::Array(vec![
+                RedisType::BulkString("PSYNC".to_string()),
+                RedisType::BulkString("?".to_string()),
+                RedisType::BulkString("-1".to_string()),
             ]);
             let command = command.encode();
             stream

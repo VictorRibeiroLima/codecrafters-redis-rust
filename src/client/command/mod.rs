@@ -5,6 +5,7 @@ use tokio::sync::RwLock;
 use crate::redis::{types::RedisType, Redis};
 
 mod info;
+mod psync;
 mod repl_conf;
 mod set;
 
@@ -16,6 +17,7 @@ pub enum Command {
     Get,
     Info,
     ReplConf,
+    Psync,
 }
 
 impl FromStr for Command {
@@ -29,6 +31,7 @@ impl FromStr for Command {
             "GET" => Ok(Command::Get),
             "INFO" => Ok(Command::Info),
             "REPLCONF" => Ok(Command::ReplConf),
+            "PSYNC" => Ok(Command::Psync),
             _ => Err(()),
         }
     }
@@ -46,6 +49,7 @@ pub async fn handle_command(
         Command::Get => handle_get(args, redis).await,
         Command::Info => info::handle_info(args, redis).await,
         Command::ReplConf => repl_conf::handle_repl_conf(args, redis).await,
+        Command::Psync => psync::handle_psync(args, redis).await,
     }
 }
 
