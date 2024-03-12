@@ -42,8 +42,6 @@ impl Client {
 
             let response = command::handle_command(command, args, &self.redis).await;
             let bytes = response.as_bytes();
-            println!("{}", response);
-            println!("{}", bytes.len());
             self.stream.write_all(&bytes).await?;
         }
 
