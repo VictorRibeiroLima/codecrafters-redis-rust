@@ -6,6 +6,7 @@ mod replication;
 mod value;
 
 #[derive(Debug, Default)]
+#[allow(dead_code)]
 pub struct Redis {
     port: u16,
     memory: HashMap<String, Value>,
