@@ -5,7 +5,7 @@ use std::{
 
 struct Value {
     value: String,
-    created_at: u128,
+    _created_at: u128,
     expires_at: Option<u128>,
 }
 impl Value {
@@ -14,7 +14,7 @@ impl Value {
         let expires_at = expiration.map(|expiration| created_at + expiration);
         Value {
             value,
-            created_at,
+            _created_at: created_at,
             expires_at,
         }
     }

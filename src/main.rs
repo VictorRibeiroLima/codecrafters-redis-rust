@@ -5,12 +5,15 @@ use anyhow::Result;
 
 use tokio::{net::TcpListener, sync::Mutex};
 
+mod args;
 mod client;
 mod redis;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let listener = TcpListener::bind("127.0.0.1:6379").await?;
+    let args = args::Args::parse()?;
+    let addr = format!("127.0.0.1:{}", args.port);
+    let listener = TcpListener::bind(addr).await?;
     let redis = redis::Redis::new();
     let redis = Arc::new(Mutex::new(redis));
     tokio::spawn(start_expiration_thread(Arc::clone(&redis)));
