@@ -9,7 +9,11 @@ async fn main() -> Result<()> {
 
     loop {
         let (stream, _) = listener.accept().await?;
-        handle_stream(stream).await?;
+        tokio::spawn(async move {
+            if let Err(e) = handle_stream(stream).await {
+                eprintln!("failed to process connection; error = {:?}", e);
+            }
+        });
     }
 }
 
