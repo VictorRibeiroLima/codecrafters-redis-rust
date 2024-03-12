@@ -32,7 +32,7 @@ async fn main() -> Result<()> {
 
 async fn start_expiration_thread(redis: Arc<Mutex<redis::Redis>>) {
     loop {
-        tokio::time::sleep(tokio::time::Duration::from_millis(1)).await;
+        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
         let mut redis = redis.lock().await;
         redis.expire_keys();
     }

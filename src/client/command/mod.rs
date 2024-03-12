@@ -4,12 +4,16 @@ use tokio::sync::Mutex;
 
 use crate::redis::Redis;
 
+mod info;
+mod set;
+
 #[derive(Debug, PartialEq)]
 pub enum Command {
     Ping,
     Echo,
     Set,
     Get,
+    Info,
 }
 
 impl FromStr for Command {
@@ -21,6 +25,7 @@ impl FromStr for Command {
             "ECHO" => Ok(Command::Echo),
             "SET" => Ok(Command::Set),
             "GET" => Ok(Command::Get),
+            "INFO" => Ok(Command::Info),
             _ => Err(()),
         }
     }
@@ -34,8 +39,9 @@ pub async fn handle_command(
     match command {
         Command::Ping => handle_ping(),
         Command::Echo => handle_echo(args),
-        Command::Set => handle_set(args, redis).await,
+        Command::Set => set::handle_set(args, redis).await,
         Command::Get => handle_get(args, redis).await,
+        Command::Info => info::handle_info(args, redis).await,
     }
 }
 
@@ -46,37 +52,6 @@ fn handle_ping() -> String {
 fn handle_echo(args: Vec<&str>) -> String {
     let first_arg = args.get(0).unwrap_or(&"");
     format!("+{}\r\n", first_arg)
-}
-
-async fn handle_set(args: Vec<&str>, redis: &Arc<Mutex<Redis>>) -> String {
-    let key = match args.get(0) {
-        Some(key) => key.to_string(),
-        None => return "-ERR missing key\r\n".to_string(),
-    };
-    let value = match args.get(1) {
-        Some(value) => value.to_string(),
-        None => return "-ERR missing value\r\n".to_string(),
-    };
-    let expires_in = match args.get(2) {
-        Some(expiration_command) => {
-            let expiration_command = *expiration_command;
-            if expiration_command != "px" {
-                return "-ERR unknown command\r\n".to_string();
-            }
-            let expiration = match args.get(3) {
-                Some(expiration) => match expiration.parse::<u128>() {
-                    Ok(expiration) => Some(expiration),
-                    Err(_) => return "-ERR invalid expiration\r\n".to_string(),
-                },
-                None => return "-ERR missing expiration\r\n".to_string(),
-            };
-            expiration
-        }
-        None => None,
-    };
-    let mut redis = redis.lock().await;
-    redis.set(key, value, expires_in);
-    "+OK\r\n".to_string()
 }
 
 async fn handle_get(args: Vec<&str>, redis: &Arc<Mutex<Redis>>) -> String {

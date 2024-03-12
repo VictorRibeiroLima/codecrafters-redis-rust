@@ -1,43 +1,20 @@
-use std::{
-    collections::{HashMap, HashSet},
-    time::{SystemTime, UNIX_EPOCH},
-};
+use std::collections::{HashMap, HashSet};
 
-struct Value {
-    value: String,
-    _created_at: u128,
-    expires_at: Option<u128>,
-}
-impl Value {
-    fn new(value: String, expiration: Option<u128>) -> Self {
-        let created_at = get_current_time();
-        let expires_at = expiration.map(|expiration| created_at + expiration);
-        Value {
-            value,
-            _created_at: created_at,
-            expires_at,
-        }
-    }
+use self::{replication::Replication, value::Value};
 
-    fn is_expired(&self) -> bool {
-        match self.expires_at {
-            Some(expires_at) => get_current_time() > expires_at,
-            None => false,
-        }
-    }
-}
+mod replication;
+mod value;
 
+#[derive(Debug, Default)]
 pub struct Redis {
     memory: HashMap<String, Value>,
     keys: HashSet<String>,
+    replication: Replication,
 }
 
 impl Redis {
     pub fn new() -> Self {
-        Redis {
-            memory: HashMap::new(),
-            keys: HashSet::new(),
-        }
+        Redis::default()
     }
 
     pub fn set(&mut self, key: String, value: String, expiration: Option<u128>) {
@@ -46,7 +23,16 @@ impl Redis {
     }
 
     pub fn get(&self, key: &str) -> Option<&String> {
-        self.memory.get(key).map(|value| &value.value)
+        match self.memory.get(key) {
+            Some(value) => {
+                if value.is_expired() {
+                    None
+                } else {
+                    Some(&value.value)
+                }
+            }
+            None => None,
+        }
     }
 
     pub fn expire_keys(&mut self) {
@@ -66,11 +52,8 @@ impl Redis {
             self.keys.remove(&key);
         }
     }
-}
 
-fn get_current_time() -> u128 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("Time went backwards")
-        .as_millis()
+    pub fn replication_info(&self) -> String {
+        self.replication.to_string()
+    }
 }
