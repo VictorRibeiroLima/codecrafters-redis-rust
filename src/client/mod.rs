@@ -1,37 +1,51 @@
-use std::str::FromStr;
+use std::{str::FromStr, sync::Arc};
 
 use anyhow::Result;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
+    sync::Mutex,
 };
+
+use crate::redis::Redis;
 
 use self::command::Command;
 
 mod command;
 
-pub async fn handle_stream(mut stream: TcpStream) -> Result<()> {
-    let mut buf = [0; 512];
-    loop {
-        let n = stream.read(&mut buf).await?;
-        if n == 0 {
-            break;
-        }
-        let input = std::str::from_utf8(&buf[..n])?;
-        let (command, args) = match parse_message(input) {
-            Ok((c, a)) => (c, a),
-            Err(e) => {
-                println!("{}", e);
-                stream.write_all(e.as_bytes()).await?;
-                continue;
-            }
-        };
+pub struct Client {
+    stream: TcpStream,
+    redis: Arc<Mutex<Redis>>,
+}
 
-        let response = command::handle_command(command, args);
-        stream.write_all(response.as_bytes()).await?;
+impl Client {
+    pub fn new(stream: TcpStream, redis: Arc<Mutex<Redis>>) -> Self {
+        Client { stream, redis }
     }
 
-    Ok(())
+    pub async fn handle_stream(&mut self) -> Result<()> {
+        let mut buf = [0; 512];
+        loop {
+            let n = self.stream.read(&mut buf).await?;
+            if n == 0 {
+                break;
+            }
+            let input = std::str::from_utf8(&buf[..n])?;
+            let (command, args) = match parse_message(input) {
+                Ok((c, a)) => (c, a),
+                Err(e) => {
+                    println!("{}", e);
+                    self.stream.write_all(e.as_bytes()).await?;
+                    continue;
+                }
+            };
+
+            let response = command::handle_command(command, args, &self.redis).await;
+            self.stream.write_all(response.as_bytes()).await?;
+        }
+
+        Ok(())
+    }
 }
 
 fn parse_message<'a>(s: &'a str) -> Result<(Command, Vec<&'a str>), String> {
