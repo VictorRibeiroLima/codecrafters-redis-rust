@@ -19,7 +19,12 @@ pub struct Replication {
 
 impl Display for Replication {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut bulk_string = String::from("$13\r\n# Replication\r\n");
+        let mut bulk_string = String::new();
+        let role = self.role.to_string();
+        let role_len = 5 + role.len();
+        bulk_string.push_str(&format!("${}\r\nrole:{}\r\n", role_len, role));
+        return write!(f, "{}", bulk_string);
+
         let role = self.role.to_string();
         let role_len = 5 + role.len();
         bulk_string.push_str(&format!("${}\r\nrole:{}\r\n", role_len, role));
