@@ -12,7 +12,7 @@ async fn main() -> Result<()> {
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
-                handle_stream(stream)?;
+                handle_stream(stream).await?;
             }
             Err(e) => {
                 println!("error: {}", e);
@@ -22,7 +22,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-fn handle_stream(mut stream: std::net::TcpStream) -> Result<()> {
+async fn handle_stream(mut stream: std::net::TcpStream) -> Result<()> {
     let mut buf = [0; 512];
     loop {
         let n = stream.read(&mut buf)?;
