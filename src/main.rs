@@ -14,7 +14,7 @@ async fn main() -> Result<()> {
     let args = args::Args::parse()?;
     let addr = format!("127.0.0.1:{}", args.port);
     let listener = TcpListener::bind(addr).await?;
-    let redis = redis::Redis::new();
+    let redis = redis::Redis::new(args.port, args.replica_of);
     let redis = Arc::new(Mutex::new(redis));
     tokio::spawn(start_expiration_thread(Arc::clone(&redis)));
 

@@ -7,14 +7,19 @@ mod value;
 
 #[derive(Debug, Default)]
 pub struct Redis {
+    port: u16,
     memory: HashMap<String, Value>,
     keys: HashSet<String>,
     replication: Replication,
 }
 
 impl Redis {
-    pub fn new() -> Self {
-        Redis::default()
+    pub fn new(port: u16, replica_of: Option<u16>) -> Self {
+        Self {
+            port,
+            replication: Replication::new(replica_of),
+            ..Default::default()
+        }
     }
 
     pub fn set(&mut self, key: String, value: String, expiration: Option<u128>) {
