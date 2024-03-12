@@ -2,7 +2,7 @@ use anyhow::Result;
 
 pub struct Args {
     pub port: u16,
-    pub replica_of: Option<u16>,
+    pub replica_of: Option<(String, u16)>,
 }
 
 impl Args {
@@ -19,11 +19,15 @@ impl Args {
                         .parse()?;
                 }
                 "--replicaof" => {
-                    let replica_of_o = args
+                    let replica_of_s = args
+                        .next()
+                        .ok_or_else(|| anyhow::anyhow!("Missing value for --replicaof"))?;
+
+                    let replica_of_u = args
                         .next()
                         .ok_or_else(|| anyhow::anyhow!("Missing value for --replicaof"))?
                         .parse()?;
-                    replica_of = Some(replica_of_o);
+                    replica_of = Some((replica_of_s, replica_of_u));
                 }
                 _ => return Err(anyhow::anyhow!("Unknown argument: {}", arg)),
             }

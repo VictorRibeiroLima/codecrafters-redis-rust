@@ -14,7 +14,7 @@ pub struct Redis {
 }
 
 impl Redis {
-    pub fn new(port: u16, replica_of: Option<u16>) -> Self {
+    pub fn new(port: u16, replica_of: Option<(String, u16)>) -> Self {
         Self {
             port,
             replication: Replication::new(replica_of),

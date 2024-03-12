@@ -6,7 +6,7 @@ mod role;
 
 #[derive(Debug, PartialEq, Default)]
 pub struct Replication {
-    pub replica_of: Option<u16>,
+    pub replica_of: Option<(String, u16)>,
     pub role: Role,
     pub connected_slaves: usize,
     pub master_replid: Option<String>,
@@ -19,7 +19,7 @@ pub struct Replication {
 }
 
 impl Replication {
-    pub fn new(replica_of: Option<u16>) -> Self {
+    pub fn new(replica_of: Option<(String, u16)>) -> Self {
         let role = match replica_of {
             Some(_) => Role::Slave,
             None => Role::Master,
