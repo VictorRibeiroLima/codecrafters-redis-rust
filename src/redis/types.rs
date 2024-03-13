@@ -7,6 +7,7 @@ pub enum RedisType {
     NullBulkString,
     Integer(i64),
     Array(Vec<RedisType>),
+    Bytes(Vec<u8>),
 }
 impl RedisType {
     pub fn encode(&self) -> Vec<u8> {
@@ -21,6 +22,11 @@ impl RedisType {
             RedisType::Array(values) => {
                 let mut result = format!("*{}\r\n", values.len()).into_bytes();
                 result.extend(values.iter().flat_map(|v| v.encode()));
+                result
+            }
+            RedisType::Bytes(value) => {
+                let mut result = format!("${}\r\n", value.len()).into_bytes();
+                result.extend(value);
                 result
             }
         }

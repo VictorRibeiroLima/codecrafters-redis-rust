@@ -8,6 +8,7 @@ use tokio::{net::TcpListener, sync::RwLock};
 mod args;
 mod client;
 mod redis;
+mod util;
 
 const HOST: &str = "127.0.0.1";
 

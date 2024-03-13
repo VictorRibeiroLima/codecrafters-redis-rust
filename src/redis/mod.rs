@@ -144,4 +144,10 @@ impl Redis {
                 .expect("Failed to read from master");
         }
     }
+
+    pub fn rdb_file_bytes(&self) -> Vec<u8> {
+        //TODO: Implement RDB file generation
+        let bytes = include_bytes!("../../dump.rdb");
+        bytes.to_vec()
+    }
 }

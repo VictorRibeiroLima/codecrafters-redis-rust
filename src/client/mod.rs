@@ -42,7 +42,7 @@ impl Client {
                 }
             };
 
-            let response = command::handle_command(command, args, &self.redis, &mut writer).await;
+            command::handle_command(command, args, &self.redis, &mut writer).await;
         }
 
         Ok(())

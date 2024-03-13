@@ -13,7 +13,10 @@ impl Handler for PsyncHandler {
         let response = handle_psync(args, redis).await;
         let bytes = response.encode();
         let _ = writer.write_all(&bytes).await;
-        //TODO: Send RDB file
+        let redis = redis.read().await;
+        let file = redis.rdb_file_bytes();
+        let file = RedisType::Bytes(file);
+        let _ = writer.write_all(&file.encode()).await;
     }
 }
 async fn handle_psync(args: Vec<&str>, redis: &Arc<RwLock<Redis>>) -> RedisType {

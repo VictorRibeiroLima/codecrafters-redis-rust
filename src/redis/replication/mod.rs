@@ -2,6 +2,8 @@ use std::fmt::Display;
 
 use tokio::{io::AsyncWriteExt, net::TcpStream};
 
+use crate::util;
+
 use self::role::Role;
 use std::sync::Arc;
 
@@ -31,7 +33,7 @@ impl Replication {
 
         Self {
             role,
-            master_replid: String::from("8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"),
+            master_replid: util::gen_rand_string(40),
             replica_of,
             ..Default::default()
         }
