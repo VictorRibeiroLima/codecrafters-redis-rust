@@ -1,15 +1,16 @@
-use std::sync::Arc;
+use tokio::io::AsyncWriteExt;
 
-use tokio::{io::AsyncWriteExt, net::tcp::WriteHalf, sync::RwLock};
-
-use crate::redis::{types::RedisType, Redis};
+use crate::redis::types::RedisType;
 
 use super::Handler;
 
 pub struct GetHandler;
 
 impl Handler for GetHandler {
-    async fn handle<'a>(args: Vec<&str>, redis: &Arc<RwLock<Redis>>, stream: &mut WriteHalf<'a>) {
+    async fn handle<'a>(params: super::HandlerParams<'a>) {
+        let stream = params.writer;
+        let args = &params.args;
+        let redis = params.redis;
         let key = match args.get(0) {
             Some(key) => key.to_string(),
             None => {

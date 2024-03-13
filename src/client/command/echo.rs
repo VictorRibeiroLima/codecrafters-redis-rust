@@ -1,15 +1,15 @@
-use std::sync::Arc;
+use tokio::io::AsyncWriteExt;
 
-use tokio::{io::AsyncWriteExt, net::tcp::WriteHalf, sync::RwLock};
-
-use crate::redis::{types::RedisType, Redis};
+use crate::redis::types::RedisType;
 
 use super::Handler;
 
 pub struct EchoHandler;
 
 impl Handler for EchoHandler {
-    async fn handle<'a>(args: Vec<&str>, _redis: &Arc<RwLock<Redis>>, stream: &mut WriteHalf<'a>) {
+    async fn handle<'a>(params: super::HandlerParams<'a>) {
+        let stream = params.writer;
+        let args = &params.args;
         let first_arg = args.get(0).unwrap_or(&"");
         let str = format!("{}", first_arg);
         let response = RedisType::SimpleString(str);

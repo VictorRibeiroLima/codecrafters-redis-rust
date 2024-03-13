@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use tokio::{io::AsyncWriteExt, net::tcp::WriteHalf, sync::RwLock};
+use tokio::{io::AsyncWriteExt, sync::RwLock};
 
 use crate::redis::{types::RedisType, Redis};
 
@@ -9,7 +9,11 @@ use super::Handler;
 pub struct PsyncHandler;
 
 impl Handler for PsyncHandler {
-    async fn handle<'a>(args: Vec<&str>, redis: &Arc<RwLock<Redis>>, writer: &mut WriteHalf<'a>) {
+    async fn handle<'a>(params: super::HandlerParams<'a>) {
+        let writer = params.writer;
+        let args = params.args;
+        let redis = params.redis;
+
         let response = handle_psync(args, redis).await;
         let bytes = response.encode();
         let _ = writer.write_all(&bytes).await;

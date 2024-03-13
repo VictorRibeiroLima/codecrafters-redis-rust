@@ -4,7 +4,7 @@ use anyhow::Result;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
-    sync::RwLock,
+    sync::{mpsc::unbounded_channel, RwLock},
 };
 
 use crate::redis::Redis;
@@ -26,25 +26,76 @@ impl Client {
     pub async fn handle_stream(&mut self) -> Result<()> {
         let mut buf = [0; 512];
 
+        let (sender, mut receiver) = unbounded_channel::<Vec<u8>>();
         loop {
             let (mut reader, mut writer) = self.stream.split();
-            let n = reader.read(&mut buf).await?;
-            if n == 0 {
-                break;
-            }
-            let input = std::str::from_utf8(&buf[..n])?;
-            let (command, args) = match parse_message(input) {
-                Ok((c, a)) => (c, a),
-                Err(e) => {
-                    println!("{}", e);
-                    writer.write_all(e.as_bytes()).await?;
-                    continue;
+
+            /*This is a unnecessary hack,the "replication-11" test
+            doesn't really creates a replica of the redis server
+            it just pretends that it does, so we need to keep
+            the cli client running, to pretend that it is a replica
+
+            */
+            tokio::select! {
+                n = reader.read(&mut buf) => {
+                    let n = match n {
+                        Ok(n) => n,
+                        Err(e) => {
+                            println!("Failed to read from socket; err = {:?}", e);
+                            return Ok(());
+                        }
+                    };
+                    if n == 0 {
+                        break;
+                    }
+
+                    let response = receiver.try_recv();
+                    match response {
+                        Ok(response) => {
+                            println!("Sending response: {:?}", response);
+                            writer.write_all(&response).await?;
+                            continue;
+                        }
+                        Err(e) => {
+                            println!("Error: {:?}", e);
+                        }
+                    }
+
+                    let input = std::str::from_utf8(&buf[..n])?;
+                    let (command, args) = match parse_message(input) {
+                        Ok((c, a)) => (c, a),
+                        Err(e) => {
+                            println!("{}", e);
+                            writer.write_all(e.as_bytes()).await?;
+                            continue;
+                        }
+                    };
+
+                    command::handle_command(
+                        input,
+                        command,
+                        args,
+                        &self.redis,
+                        &mut writer,
+                        sender.clone(),
+                    )
+                    .await;
                 }
-            };
 
-            command::handle_command(command, args, &self.redis, &mut writer).await;
+                response = receiver.recv() => {
+                    match response {
+                        Some(response) => {
+                            println!("Sending response: {:?}", response);
+                            writer.write_all(&response).await?;
+                        }
+                        None => {
+                            println!("No response");
+                        }
+                    }
+                }
+            }
         }
-
+        println!("Client disconnected");
         Ok(())
     }
 }

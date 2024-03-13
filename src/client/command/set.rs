@@ -1,17 +1,17 @@
-use std::sync::Arc;
+use tokio::io::AsyncWriteExt;
 
-use tokio::{io::AsyncWriteExt, sync::RwLock};
-
-use crate::redis::{types::RedisType, Redis};
+use crate::redis::types::RedisType;
 
 pub struct SetHandler;
 
 impl super::Handler for SetHandler {
-    async fn handle<'a>(
-        args: Vec<&str>,
-        redis: &Arc<RwLock<Redis>>,
-        writer: &mut tokio::net::tcp::WriteHalf<'a>,
-    ) {
+    async fn handle<'a>(params: super::HandlerParams<'a>) {
+        let writer = params.writer;
+        let args = params.args;
+        let redis = params.redis;
+        let message = params.message;
+        let redis = redis.clone();
+
         let key = match args.get(0) {
             Some(key) => key.to_string(),
             None => {
@@ -64,9 +64,10 @@ impl super::Handler for SetHandler {
         };
         let mut redis = redis.write().await;
         redis.set(key, value, expires_in);
+
         let response = RedisType::SimpleString("OK".to_string());
         let bytes = response.encode();
         let _ = writer.write_all(&bytes).await;
-        redis.replication.propagate_message(bytes);
+        redis.replication.propagate_message(message.into()).await;
     }
 }

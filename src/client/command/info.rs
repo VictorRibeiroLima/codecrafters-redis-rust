@@ -20,11 +20,11 @@ default: Return only the default set of sections
 everything: Includes all and modules
 */
 
-use std::{str::FromStr, sync::Arc};
+use std::str::FromStr;
 
-use tokio::{io::AsyncWriteExt, net::tcp::WriteHalf, sync::RwLock};
+use tokio::io::AsyncWriteExt;
 
-use crate::redis::{types::RedisType, Redis};
+use crate::redis::types::RedisType;
 
 use super::Handler;
 
@@ -81,7 +81,10 @@ impl FromStr for InfoCommand {
 pub struct InfoHandler;
 
 impl Handler for InfoHandler {
-    async fn handle(args: Vec<&str>, redis: &Arc<RwLock<Redis>>, stream: &mut WriteHalf<'_>) {
+    async fn handle<'a>(params: super::HandlerParams<'a>) {
+        let stream = params.writer;
+        let args = &params.args;
+        let redis = params.redis;
         let mut response = String::new();
         let command_str = args.get(0).unwrap_or(&"default");
         let command = match InfoCommand::from_str(command_str) {

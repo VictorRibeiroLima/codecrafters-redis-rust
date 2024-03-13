@@ -22,7 +22,9 @@ async fn main() -> Result<()> {
     tokio::spawn(start_expiration_thread(Arc::clone(&redis)));
 
     loop {
-        let (stream, _) = listener.accept().await?;
+        let (stream, client_addr) = listener.accept().await?;
+        println!("Client connected from: {}", client_addr);
+
         let redis = Arc::clone(&redis);
         let mut client = client::Client::new(stream, redis);
         tokio::spawn(async move {

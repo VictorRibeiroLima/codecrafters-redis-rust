@@ -1,9 +1,7 @@
-use std::sync::Arc;
-
-use tokio::{io::AsyncWriteExt, net::tcp::WriteHalf, sync::RwLock};
+use tokio::io::AsyncWriteExt;
 
 use crate::{
-    redis::{types::RedisType, Redis},
+    redis::{replication::Replica, types::RedisType},
     HOST,
 };
 
@@ -12,7 +10,11 @@ use super::Handler;
 pub struct ReplConfHandler;
 
 impl Handler for ReplConfHandler {
-    async fn handle<'a>(args: Vec<&str>, redis: &Arc<RwLock<Redis>>, writer: &mut WriteHalf<'a>) {
+    async fn handle<'a>(params: super::HandlerParams<'a>) {
+        let writer = params.writer;
+        let args = params.args;
+        let redis = params.redis;
+
         let mut iter = args.iter();
         while let Some(arg) = iter.next() {
             match *arg {
@@ -35,10 +37,16 @@ impl Handler for ReplConfHandler {
                         }
                     };
                     let mut redis = redis.write().await;
-                    redis.replication.add_replica((HOST.to_string(), port));
+                    let replica = Replica {
+                        host: HOST.to_string(),
+                        port,
+                        channel: params.sender,
+                    };
+                    redis.replication.add_replica(replica);
                     let response = RedisType::SimpleString("OK".to_string());
                     let bytes = response.encode();
                     let _ = writer.write_all(&bytes).await;
+                    break;
                 }
                 "capa" => {
                     let _ = match iter.next() {

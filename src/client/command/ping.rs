@@ -1,15 +1,14 @@
-use std::sync::Arc;
+use tokio::io::AsyncWriteExt;
 
-use tokio::{io::AsyncWriteExt, net::tcp::WriteHalf, sync::RwLock};
-
-use crate::redis::{types::RedisType, Redis};
+use crate::redis::types::RedisType;
 
 use super::Handler;
 
 pub struct PingHandler;
 
 impl Handler for PingHandler {
-    async fn handle<'a>(_args: Vec<&str>, _redis: &Arc<RwLock<Redis>>, stream: &mut WriteHalf<'a>) {
+    async fn handle<'a>(params: super::HandlerParams<'a>) {
+        let stream = params.writer;
         let response = RedisType::SimpleString("PONG".to_string());
         let bytes = response.encode();
         let _ = stream.write_all(&bytes).await;

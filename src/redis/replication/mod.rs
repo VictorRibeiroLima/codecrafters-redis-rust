@@ -1,15 +1,21 @@
 use std::fmt::Display;
 
-use tokio::{io::AsyncWriteExt, net::TcpStream};
+use tokio::{io::AsyncWriteExt, net::TcpStream, sync::mpsc::UnboundedSender};
 
 use crate::util;
 
 use self::role::Role;
-use std::sync::Arc;
 
 mod role;
 
-#[derive(Debug, PartialEq, Default)]
+#[derive(Debug, Clone)]
+pub struct Replica {
+    pub host: String,
+    pub port: u16,
+    pub channel: UnboundedSender<Vec<u8>>,
+}
+
+#[derive(Debug, Default)]
 pub struct Replication {
     pub replica_of: Option<(String, u16)>,
     pub role: Role,
@@ -21,7 +27,7 @@ pub struct Replication {
     pub repl_backlog_size: i32,
     pub repl_backlog_first_byte_offset: i32,
     pub repl_backlog_histlen: i32,
-    pub replicas: Vec<(String, u16)>,
+    pub replicas: Vec<Replica>,
 }
 
 impl Replication {
@@ -39,25 +45,35 @@ impl Replication {
         }
     }
 
-    pub fn add_replica(&mut self, replica: (String, u16)) {
+    pub fn add_replica(&mut self, replica: Replica) {
         self.connected_slaves += 1;
         self.replicas.push(replica);
     }
 
-    pub fn propagate_message(&mut self, message: Vec<u8>) {
+    pub async fn propagate_message(&mut self, message: Vec<u8>) {
+        if self.role != Role::Master {
+            return;
+        }
         self.master_repl_offset += message.len() as u64;
-        let replicas = Arc::new(self.replicas.clone());
-        for replica in replicas.iter().cloned() {
+        let replicas = self.replicas.clone();
+
+        for replica in replicas.into_iter() {
             let message = message.clone();
-            tokio::spawn(async move {
-                let stream = TcpStream::connect(replica).await;
-                let stream = match stream {
-                    Ok(stream) => stream,
-                    Err(_) => return,
-                };
-                let mut stream = stream;
-                let _ = stream.write_all(&message).await;
-            });
+            let stream = TcpStream::connect((replica.host, replica.port)).await;
+            match stream {
+                Ok(stream) => {
+                    let mut stream = stream;
+                    let _ = stream.write_all(&message).await;
+                }
+                Err(e) => {
+                    println!("{}", e);
+                    let channel = replica.channel;
+                    let r = channel.send(message);
+                    if let Err(e) = r {
+                        println!("Failed to send message to replica: {}", e);
+                    }
+                }
+            };
         }
     }
 }

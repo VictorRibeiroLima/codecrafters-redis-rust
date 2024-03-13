@@ -7,7 +7,7 @@ use tokio::{
 
 use self::{replication::Replication, types::RedisType, value::Value};
 
-mod replication;
+pub mod replication;
 pub mod types;
 mod value;
 
