@@ -8,7 +8,7 @@ pub struct GetHandler;
 
 impl Handler for GetHandler {
     async fn handle<'a>(params: super::HandlerParams<'a>) {
-        let stream = params.writer;
+        let mut stream = params.writer;
         let args = &params.args;
         let redis = params.redis;
         let key = match args.get(0) {

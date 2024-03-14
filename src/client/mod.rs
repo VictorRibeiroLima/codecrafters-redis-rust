@@ -1,15 +1,18 @@
-use std::{str::FromStr, sync::Arc};
+use std::sync::Arc;
 
 use anyhow::Result;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
-    sync::{mpsc::unbounded_channel, RwLock},
+    sync::{
+        mpsc::{unbounded_channel, UnboundedSender},
+        RwLock,
+    },
 };
 
-use crate::redis::Redis;
+use crate::redis::{types::RedisType, Redis};
 
-use self::command::Command;
+use self::command::{handle_command, Command};
 
 mod command;
 
@@ -28,8 +31,6 @@ impl Client {
 
         let (sender, mut receiver) = unbounded_channel::<Vec<u8>>();
         loop {
-            let (mut reader, mut writer) = self.stream.split();
-
             /*This is a unnecessary hack,the "replication-11" test
             doesn't really creates a replica of the redis server
             it just pretends that it does, so we need to keep
@@ -37,7 +38,7 @@ impl Client {
 
             */
             tokio::select! {
-                n = reader.read(&mut buf) => {
+                n = self.stream.read(&mut buf) => {
                     let n = match n {
                         Ok(n) => n,
                         Err(e) => {
@@ -49,44 +50,13 @@ impl Client {
                         break;
                     }
 
-                    let response = receiver.try_recv();
-                    match response {
-                        Ok(response) => {
-                            println!("Sending response: {:?}", response);
-                            writer.write_all(&response).await?;
-                            continue;
-                        }
-                        Err(e) => {
-                            println!("Error: {:?}", e);
-                        }
-                    }
-
-                    let input = std::str::from_utf8(&buf[..n])?;
-                    let (command, args) = match parse_message(input) {
-                        Ok((c, a)) => (c, a),
-                        Err(e) => {
-                            println!("{}", e);
-                            writer.write_all(e.as_bytes()).await?;
-                            continue;
-                        }
-                    };
-
-                    command::handle_command(
-                        input,
-                        command,
-                        args,
-                        &self.redis,
-                        &mut writer,
-                        sender.clone(),
-                    )
-                    .await;
+                    self.handle_command(&mut buf, n, sender.clone()).await?;
                 }
-
                 response = receiver.recv() => {
                     match response {
                         Some(response) => {
-                            println!("Sending response: {:?}", response);
-                            writer.write_all(&response).await?;
+                            self.stream.write_all(&response).await?;
+                            self.stream.flush().await?;
                         }
                         None => {
                             println!("No response");
@@ -98,9 +68,45 @@ impl Client {
         println!("Client disconnected");
         Ok(())
     }
+
+    async fn handle_command(
+        &mut self,
+        buff: &mut [u8; 512],
+        n: usize,
+        sender: UnboundedSender<Vec<u8>>,
+    ) -> Result<()> {
+        let buff = &buff[..n];
+        let commands = match RedisType::from_buffer(buff) {
+            Ok(c) => c,
+            Err(_) => {
+                let e = "-ERR unknown command\r\n".to_string();
+                println!("{}", e);
+                self.stream.write_all(e.as_bytes()).await?;
+                return Ok(());
+            }
+        };
+
+        for command in commands {
+            let result = Command::split_type(command);
+            let (command, args) = match result {
+                Ok((c, a)) => (c, a),
+                Err(_) => {
+                    let e = "-ERR unknown command\r\n".to_string();
+                    println!("{}", e);
+                    self.stream.write_all(e.as_bytes()).await?;
+                    return Ok(());
+                }
+            };
+            let (_, writer) = self.stream.split();
+            handle_command(command, args, &self.redis, writer, sender.clone()).await;
+        }
+        Ok(())
+    }
 }
 
+/*
 fn parse_message<'a>(s: &'a str) -> Result<(Command, Vec<&'a str>), String> {
+    println!("Parsing message: {:?}", s);
     let lines: Vec<&str> = s.lines().collect();
 
     let first_line = match lines.get(0) {
@@ -150,3 +156,5 @@ fn parse_message<'a>(s: &'a str) -> Result<(Command, Vec<&'a str>), String> {
     };
     Ok((command, args[1..].to_vec()))
 }
+
+*/

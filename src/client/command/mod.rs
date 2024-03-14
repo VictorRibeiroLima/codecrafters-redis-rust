@@ -5,7 +5,7 @@ use tokio::{
     sync::{mpsc::UnboundedSender, RwLock},
 };
 
-use crate::redis::Redis;
+use crate::redis::{types::RedisType, Redis};
 
 mod echo;
 mod get;
@@ -17,10 +17,9 @@ mod repl_conf;
 mod set;
 
 struct HandlerParams<'a> {
-    message: &'a str,
-    args: Vec<&'a str>,
+    args: Vec<String>,
     redis: &'a Arc<RwLock<Redis>>,
-    writer: &'a mut WriteHalf<'a>,
+    writer: WriteHalf<'a>,
     sender: UnboundedSender<Vec<u8>>,
 }
 
@@ -28,7 +27,7 @@ trait Handler {
     async fn handle<'a>(params: HandlerParams<'a>);
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Command {
     Ping,
     Echo,
@@ -56,16 +55,48 @@ impl FromStr for Command {
     }
 }
 
+impl Command {
+    pub fn split_type(redis_type: RedisType) -> Result<(Command, Vec<String>), ()> {
+        match redis_type {
+            RedisType::Array(array) => {
+                let mut iter = array.into_iter();
+                let command = iter
+                    .next()
+                    .ok_or(())?
+                    .to_string()
+                    .to_uppercase()
+                    .parse()
+                    .map_err(|_| ())?;
+                let args = iter.map(|arg| arg.to_string()).collect();
+                Ok((command, args))
+            }
+            _ => return Err(()),
+        }
+    }
+}
+
+impl Into<RedisType> for Command {
+    fn into(self) -> RedisType {
+        match self {
+            Command::Ping => RedisType::BulkString("PONG".to_string()),
+            Command::Echo => RedisType::BulkString("ECHO".to_string()),
+            Command::Set => RedisType::BulkString("SET".to_string()),
+            Command::Get => RedisType::BulkString("GET".to_string()),
+            Command::Info => RedisType::BulkString("INFO".to_string()),
+            Command::ReplConf => RedisType::BulkString("REPLCONF".to_string()),
+            Command::Psync => RedisType::BulkString("PSYNC".to_string()),
+        }
+    }
+}
+
 pub async fn handle_command<'a>(
-    message: &'a str,
     command: Command,
-    args: Vec<&'a str>,
+    args: Vec<String>,
     redis: &'a Arc<RwLock<Redis>>,
-    writer: &'a mut WriteHalf<'a>,
+    writer: WriteHalf<'a>,
     sender: UnboundedSender<Vec<u8>>,
 ) {
     let params = HandlerParams {
-        message,
         args,
         redis,
         writer,

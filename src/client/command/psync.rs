@@ -10,7 +10,7 @@ pub struct PsyncHandler;
 
 impl Handler for PsyncHandler {
     async fn handle<'a>(params: super::HandlerParams<'a>) {
-        let writer = params.writer;
+        let mut writer = params.writer;
         let args = params.args;
         let redis = params.redis;
 
@@ -23,17 +23,17 @@ impl Handler for PsyncHandler {
         let _ = writer.write_all(&file.encode()).await;
     }
 }
-async fn handle_psync(args: Vec<&str>, redis: &Arc<RwLock<Redis>>) -> RedisType {
+async fn handle_psync(args: Vec<String>, redis: &Arc<RwLock<Redis>>) -> RedisType {
     let _ = match args.get(0) {
         Some(id) => id,
-        None => return RedisType::Error("ERR invalid id".to_string()),
+        None => return RedisType::SimpleError("ERR invalid id".to_string()),
     };
     let _ = match args.get(1) {
         Some(offset) => match offset.parse::<i64>() {
             Ok(offset) => offset,
-            Err(_) => return RedisType::Error("ERR invalid offset".to_string()),
+            Err(_) => return RedisType::SimpleError("ERR invalid offset".to_string()),
         },
-        None => return RedisType::Error("ERR invalid offset".to_string()),
+        None => return RedisType::SimpleError("ERR invalid offset".to_string()),
     };
     let redis = redis.read().await;
     let redis_id = redis.replication.master_replid.clone();

@@ -1,6 +1,10 @@
 use std::fmt::Display;
 
-use tokio::{io::AsyncWriteExt, net::TcpStream, sync::mpsc::UnboundedSender};
+use tokio::{
+    io::AsyncWriteExt,
+    net::TcpStream,
+    sync::{mpsc::UnboundedSender, Mutex},
+};
 
 use crate::util;
 
@@ -8,11 +12,12 @@ use self::role::Role;
 
 mod role;
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Replica {
     pub host: String,
     pub port: u16,
     pub channel: UnboundedSender<Vec<u8>>,
+    pub stream: Option<Mutex<TcpStream>>,
 }
 
 #[derive(Debug, Default)]
@@ -55,25 +60,31 @@ impl Replication {
             return;
         }
         self.master_repl_offset += message.len() as u64;
-        let replicas = self.replicas.clone();
 
-        for replica in replicas.into_iter() {
-            let message = message.clone();
-            let stream = TcpStream::connect((replica.host, replica.port)).await;
-            match stream {
-                Ok(stream) => {
-                    let mut stream = stream;
-                    let _ = stream.write_all(&message).await;
+        let mut remove = Vec::new();
+        for (i, replica) in self.replicas.iter().enumerate() {
+            match &replica.stream {
+                Some(stream) => {
+                    let mut stream = stream.lock().await;
+                    let response = stream.write_all(&message).await;
+                    if let Err(e) = response {
+                        println!("Failed to send message to replica: {}", e);
+                        self.connected_slaves -= 1;
+                        remove.push(i);
+                    }
                 }
-                Err(e) => {
-                    println!("{}", e);
-                    let channel = replica.channel;
-                    let r = channel.send(message);
+                None => {
+                    let channel = &replica.channel;
+                    let r = channel.send(message.clone());
                     if let Err(e) = r {
                         println!("Failed to send message to replica: {}", e);
                     }
                 }
-            };
+            }
+        }
+
+        for i in remove.iter().rev() {
+            self.replicas.swap_remove(*i);
         }
     }
 }

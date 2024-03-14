@@ -82,12 +82,12 @@ pub struct InfoHandler;
 
 impl Handler for InfoHandler {
     async fn handle<'a>(params: super::HandlerParams<'a>) {
-        let stream = params.writer;
-        let args = &params.args;
+        let mut stream = params.writer;
+        let args = params.args;
         let redis = params.redis;
         let mut response = String::new();
-        let command_str = args.get(0).unwrap_or(&"default");
-        let command = match InfoCommand::from_str(command_str) {
+        let command_str = args.into_iter().nth(0).unwrap_or("default".to_string());
+        let command = match InfoCommand::from_str(&command_str) {
             Ok(command) => command,
             Err(e) => {
                 let response = e.encode();
@@ -102,7 +102,7 @@ impl Handler for InfoHandler {
                 response.push_str(&redis.replication_info());
             }
             _ => {
-                let response = RedisType::Error("ERR unknown info command".to_string());
+                let response = RedisType::SimpleError("ERR unknown info command".to_string());
                 let bytes = response.encode();
                 let _ = stream.write_all(&bytes).await;
                 return;
