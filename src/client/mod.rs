@@ -77,9 +77,8 @@ impl Client {
         let commands = match RedisType::from_buffer(buff) {
             Ok(c) => c,
             Err(_) => {
-                println!("Assuming that this is the rbd file");
-                //let e = "-ERR unknown command\r\n".to_string();
-                //self.stream.write_all(e.as_bytes()).await?;
+                let e = "-ERR unknown command\r\n".to_string();
+                self.stream.write_all(e.as_bytes()).await?;
                 return Ok(());
             }
         };
@@ -91,7 +90,7 @@ impl Client {
                 Err(_) => {
                     let e = "-ERR unknown command\r\n".to_string();
                     self.stream.write_all(e.as_bytes()).await?;
-                    return Ok(());
+                    continue;
                 }
             };
             let (_, writer) = self.stream.get_mut().split();
