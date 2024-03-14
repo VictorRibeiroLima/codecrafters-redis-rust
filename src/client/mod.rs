@@ -17,16 +17,14 @@ use self::command::{handle_command, Command};
 mod command;
 
 pub struct Client {
-    stream: TcpStream,
-    redis: Arc<RwLock<Redis>>,
+    pub stream: TcpStream,
+    pub should_reply: bool,
+    pub redis: Arc<RwLock<Redis>>,
 }
 
 impl Client {
-    pub fn new(stream: TcpStream, redis: Arc<RwLock<Redis>>) -> Self {
-        Client { stream, redis }
-    }
-
     pub async fn handle_stream(&mut self) -> Result<()> {
+        println!("Shoud reply: {}", self.should_reply);
         let mut buf = [0; 512];
 
         let (sender, mut receiver) = unbounded_channel::<Vec<u8>>();
@@ -79,9 +77,9 @@ impl Client {
         let commands = match RedisType::from_buffer(buff) {
             Ok(c) => c,
             Err(_) => {
-                let e = "-ERR unknown command\r\n".to_string();
-                println!("{}", e);
-                self.stream.write_all(e.as_bytes()).await?;
+                println!("Assuming that this is the rbd file");
+                //let e = "-ERR unknown command\r\n".to_string();
+                //self.stream.write_all(e.as_bytes()).await?;
                 return Ok(());
             }
         };
@@ -92,7 +90,6 @@ impl Client {
                 Ok((c, a)) => (c, a),
                 Err(_) => {
                     let e = "-ERR unknown command\r\n".to_string();
-                    println!("{}", e);
                     self.stream.write_all(e.as_bytes()).await?;
                     return Ok(());
                 }

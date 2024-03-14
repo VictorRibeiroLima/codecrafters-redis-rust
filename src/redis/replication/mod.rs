@@ -10,7 +10,7 @@ use crate::util;
 
 use self::role::Role;
 
-mod role;
+pub mod role;
 
 #[derive(Debug)]
 pub struct Replica {

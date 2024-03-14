@@ -5,7 +5,11 @@ use tokio::{
     net::TcpStream,
 };
 
-use self::{replication::Replication, types::RedisType, value::Value};
+use self::{
+    replication::{role::Role, Replication},
+    types::RedisType,
+    value::Value,
+};
 
 pub mod replication;
 pub mod types;
@@ -21,13 +25,13 @@ pub struct Redis {
 }
 
 impl Redis {
-    pub async fn new(port: u16, replica_of: Option<(String, u16)>) -> Self {
+    pub fn new(port: u16, replica_of: Option<(String, u16)>) -> Self {
         let redis = Self {
             port,
             replication: Replication::new(replica_of),
             ..Default::default()
         };
-        redis.hand_shake().await;
+
         redis
     }
 
@@ -71,7 +75,11 @@ impl Redis {
         self.replication.to_string()
     }
 
-    async fn hand_shake(&self) {
+    pub fn is_master(&self) -> bool {
+        self.replication.role == Role::Master
+    }
+
+    pub async fn hand_shake(&self) -> Option<TcpStream> {
         if let Some((host, port)) = &self.replication.replica_of {
             //PING
             let mut stream = TcpStream::connect((host.clone(), *port))
@@ -142,6 +150,10 @@ impl Redis {
                 .read(&mut buffer)
                 .await
                 .expect("Failed to read from master");
+
+            Some(stream)
+        } else {
+            None
         }
     }
 
