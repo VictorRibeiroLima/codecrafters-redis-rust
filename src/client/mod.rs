@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
+    io::{AsyncReadExt, AsyncWriteExt, BufReader},
     net::TcpStream,
     sync::{
         mpsc::{unbounded_channel, UnboundedSender},
@@ -17,7 +17,7 @@ use self::command::{handle_command, Command};
 mod command;
 
 pub struct Client {
-    pub stream: TcpStream,
+    pub stream: BufReader<TcpStream>,
     pub should_reply: bool,
     pub redis: Arc<RwLock<Redis>>,
 }
@@ -94,7 +94,7 @@ impl Client {
                     return Ok(());
                 }
             };
-            let (_, writer) = self.stream.split();
+            let (_, writer) = self.stream.get_mut().split();
             handle_command(command, args, &self.redis, writer, sender.clone()).await;
         }
         Ok(())

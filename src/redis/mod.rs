@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
+    io::{AsyncReadExt, AsyncWriteExt, BufReader},
     net::TcpStream,
 };
 
@@ -79,12 +79,13 @@ impl Redis {
         self.replication.role == Role::Master
     }
 
-    pub async fn hand_shake(&self) -> Option<TcpStream> {
+    pub async fn hand_shake(&self) -> Option<BufReader<TcpStream>> {
         if let Some((host, port)) = &self.replication.replica_of {
             //PING
-            let mut stream = TcpStream::connect((host.clone(), *port))
+            let stream = TcpStream::connect((host.clone(), *port))
                 .await
                 .expect("Failed to connect to master");
+            let mut stream = BufReader::new(stream);
             let ping_command = RedisType::Array(vec![RedisType::BulkString("PING".to_string())]);
             let ping_command = ping_command.encode();
             stream

@@ -49,6 +49,7 @@ async fn main() -> Result<()> {
         println!("Client connected from: {}", client_addr);
 
         let redis = Arc::clone(&redis);
+        let stream = tokio::io::BufReader::new(stream);
         let mut client = Client {
             stream,
             should_reply: true,
