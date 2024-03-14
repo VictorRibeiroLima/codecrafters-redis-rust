@@ -14,7 +14,6 @@ pub enum RedisType {
 
 impl RedisType {
     pub fn from_buffer(buffer: &[u8]) -> Result<Vec<RedisType>, ()> {
-        println!("Buffer: {:?}", buffer);
         let mut result = vec![];
         let str = std::str::from_utf8(buffer).map_err(|_| ())?;
 

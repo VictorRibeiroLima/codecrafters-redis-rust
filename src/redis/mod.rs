@@ -151,6 +151,13 @@ impl Redis {
                 .await
                 .expect("Failed to read from master");
 
+            //This should be the file
+            let mut buffer = [0; 512];
+            stream
+                .read(&mut buffer)
+                .await
+                .expect("Failed to read from master");
+
             Some(stream)
         } else {
             None
