@@ -17,6 +17,9 @@ impl super::Handler for SetHandler {
         let key = match args.get(0) {
             Some(key) => key.to_string(),
             None => {
+                if !params.should_reply {
+                    return;
+                }
                 let response = RedisType::SimpleError("ERR missing key".to_string());
                 let bytes = response.encode();
                 let _ = writer.write_all(&bytes).await;
@@ -26,6 +29,9 @@ impl super::Handler for SetHandler {
         let value = match args.get(1) {
             Some(value) => value.to_string(),
             None => {
+                if !params.should_reply {
+                    return;
+                }
                 let response = RedisType::SimpleError("ERR missing value".to_string());
                 let bytes = response.encode();
                 let _ = writer.write_all(&bytes).await;
@@ -37,6 +43,9 @@ impl super::Handler for SetHandler {
                 let expiration_command = expiration_command;
                 if expiration_command != "px" {
                     {
+                        if !params.should_reply {
+                            return;
+                        }
                         let response = RedisType::SimpleError("ERR invalid expiration".to_string());
                         let bytes = response.encode();
                         let _ = writer.write_all(&bytes).await;
@@ -47,6 +56,9 @@ impl super::Handler for SetHandler {
                     Some(expiration) => match expiration.parse::<u128>() {
                         Ok(expiration) => Some(expiration),
                         Err(_) => {
+                            if !params.should_reply {
+                                return;
+                            }
                             let response =
                                 RedisType::SimpleError("ERR invalid expiration".to_string());
                             let bytes = response.encode();
@@ -55,6 +67,9 @@ impl super::Handler for SetHandler {
                         }
                     },
                     None => {
+                        if !params.should_reply {
+                            return;
+                        }
                         let response = RedisType::SimpleError("ERR invalid expiration".to_string());
                         let bytes = response.encode();
                         let _ = writer.write_all(&bytes).await;
@@ -73,10 +88,11 @@ impl super::Handler for SetHandler {
         let command = RedisType::Array(command);
         let mut redis = redis.write().await;
         redis.set(key, value, expires_in);
-
-        let response = RedisType::SimpleString("OK".to_string());
-        let bytes = response.encode();
-        let _ = writer.write_all(&bytes).await;
+        if params.should_reply {
+            let response = RedisType::SimpleString("OK".to_string());
+            let bytes = response.encode();
+            let _ = writer.write_all(&bytes).await;
+        }
         redis.replication.propagate_message(command.encode()).await;
     }
 }

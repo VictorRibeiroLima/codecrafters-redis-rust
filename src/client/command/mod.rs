@@ -21,6 +21,7 @@ struct HandlerParams<'a> {
     redis: &'a Arc<RwLock<Redis>>,
     writer: WriteHalf<'a>,
     sender: UnboundedSender<Vec<u8>>,
+    should_reply: bool,
 }
 
 trait Handler {
@@ -95,12 +96,14 @@ pub async fn handle_command<'a>(
     redis: &'a Arc<RwLock<Redis>>,
     writer: WriteHalf<'a>,
     sender: UnboundedSender<Vec<u8>>,
+    should_reply: bool,
 ) {
     let params = HandlerParams {
         args,
         redis,
         writer,
         sender,
+        should_reply,
     };
     match command {
         Command::Ping => ping::PingHandler::handle(params).await,

@@ -48,7 +48,7 @@ impl Client {
                         break;
                     }
 
-                    self.handle_command(&mut buf, n, sender.clone()).await?;
+                    self.handle_command(&mut buf, n, sender.clone(),self.should_reply).await?;
                 }
                 response = receiver.recv() => {
                     match response {
@@ -72,11 +72,15 @@ impl Client {
         buff: &mut [u8; 512],
         n: usize,
         sender: UnboundedSender<Vec<u8>>,
+        should_reply: bool,
     ) -> Result<()> {
         let buff = &buff[..n];
         let commands = match RedisType::from_buffer(buff) {
             Ok(c) => c,
             Err(_) => {
+                if !should_reply {
+                    return Ok(());
+                }
                 let e = "-ERR unknown command\r\n".to_string();
                 self.stream.write_all(e.as_bytes()).await?;
                 return Ok(());
@@ -88,13 +92,24 @@ impl Client {
             let (command, args) = match result {
                 Ok((c, a)) => (c, a),
                 Err(_) => {
+                    if !should_reply {
+                        continue;
+                    }
                     let e = "-ERR unknown command\r\n".to_string();
                     self.stream.write_all(e.as_bytes()).await?;
                     continue;
                 }
             };
             let (_, writer) = self.stream.get_mut().split();
-            handle_command(command, args, &self.redis, writer, sender.clone()).await;
+            handle_command(
+                command,
+                args,
+                &self.redis,
+                writer,
+                sender.clone(),
+                self.should_reply,
+            )
+            .await;
         }
         Ok(())
     }

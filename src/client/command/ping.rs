@@ -8,9 +8,13 @@ pub struct PingHandler;
 
 impl Handler for PingHandler {
     async fn handle<'a>(params: super::HandlerParams<'a>) {
+        if !params.should_reply {
+            return;
+        }
         let mut stream = params.writer;
         let response = RedisType::SimpleString("PONG".to_string());
         let bytes = response.encode();
+
         let _ = stream.write_all(&bytes).await;
     }
 }

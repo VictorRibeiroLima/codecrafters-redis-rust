@@ -17,7 +17,7 @@ impl Handler for ReplConfHandler {
 
         let mut iter = args.into_iter();
         while let Some(arg) = iter.next() {
-            match arg.as_str() {
+            match arg.to_lowercase().as_str() {
                 "listening-port" => {
                     let port = match iter.next() {
                         Some(port) => match port.parse::<u16>() {
@@ -69,6 +69,26 @@ impl Handler for ReplConfHandler {
                     };
 
                     let response = RedisType::SimpleString("OK".to_string());
+                    let bytes = response.encode();
+                    let _ = writer.write_all(&bytes).await;
+                }
+                "getack" => {
+                    println!("getack");
+                    let _ = match iter.next() {
+                        Some(getack) => getack,
+                        None => {
+                            let response = RedisType::SimpleError("ERR missing getack".to_string());
+                            let bytes = response.encode();
+                            let _ = writer.write_all(&bytes).await;
+                            return;
+                        }
+                    };
+
+                    let response = RedisType::Array(vec![
+                        RedisType::BulkString("REPLCONF".to_string()),
+                        RedisType::BulkString("ACK".to_string()),
+                        RedisType::BulkString("0".to_string()),
+                    ]);
                     let bytes = response.encode();
                     let _ = writer.write_all(&bytes).await;
                 }
