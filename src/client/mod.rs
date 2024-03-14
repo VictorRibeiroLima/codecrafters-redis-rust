@@ -88,6 +88,7 @@ impl Client {
         };
 
         for command in commands {
+            let command_len = command.len();
             let result = Command::split_type(command);
             let (command, args) = match result {
                 Ok((c, a)) => (c, a),
@@ -110,6 +111,10 @@ impl Client {
                 self.should_reply,
             )
             .await;
+            if !should_reply {
+                let mut redis = self.redis.write().await;
+                redis.replication.slave_read_repl_offset += command_len as u64;
+            }
         }
         Ok(())
     }

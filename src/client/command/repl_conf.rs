@@ -84,10 +84,12 @@ impl Handler for ReplConfHandler {
                         }
                     };
 
+                    let redis = redis.read().await;
+                    let offset = redis.replication.slave_read_repl_offset;
                     let response = RedisType::Array(vec![
                         RedisType::BulkString("REPLCONF".to_string()),
                         RedisType::BulkString("ACK".to_string()),
-                        RedisType::BulkString("0".to_string()),
+                        RedisType::BulkString(offset.to_string()),
                     ]);
                     let bytes = response.encode();
                     let _ = writer.write_all(&bytes).await;

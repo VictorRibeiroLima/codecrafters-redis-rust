@@ -33,6 +33,7 @@ pub struct Replication {
     pub repl_backlog_first_byte_offset: i32,
     pub repl_backlog_histlen: i32,
     pub replicas: Vec<Replica>,
+    pub slave_read_repl_offset: u64,
 }
 
 impl Replication {

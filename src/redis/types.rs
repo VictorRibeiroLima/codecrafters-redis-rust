@@ -44,6 +44,39 @@ impl RedisType {
         }
     }
 
+    pub fn len(&self) -> usize {
+        match self {
+            RedisType::SimpleString(value) => value.len() + 3,
+            RedisType::SimpleError(value) => value.len() + 3,
+            RedisType::Integer(value) => value.to_string().len() + 3,
+            RedisType::BulkString(value) => {
+                //The String itself
+                let len = value.len();
+                //The value that's going to be used to represent the length of the string
+                let len_len = len.to_string().len();
+                //+4 for the 2 \r\n and +1  for the $
+                len + len_len + 5
+            }
+            RedisType::NullBulkString => 5,
+            RedisType::Array(values) => {
+                let mut result = 0;
+                let values_len = values.len();
+                for value in values {
+                    result += value.len();
+                }
+                //+1 for the *, +2 for the \r\n, + the length of the array
+                result + values_len.to_string().len() + 3
+            }
+            RedisType::NullArray => 5,
+            RedisType::Bytes(value) => {
+                let len = value.len();
+                let len_len = len.to_string().len();
+                //+2 for the \r\n and +1 for the $
+                len + len_len + 3
+            }
+        }
+    }
+
     fn inner_from_buffer(buffer: &[u8], result: &mut Vec<RedisType>) -> Result<(), ()> {
         if buffer.is_empty() {
             return Ok(());
@@ -465,5 +498,35 @@ mod test {
 
         let result = RedisType::from_buffer(&buffer).unwrap();
         println!("{:?}", result);
+    }
+
+    #[test]
+    fn test_len() {
+        //$11\r\nhello world\r\ = 18
+        let hello_world = RedisType::BulkString("hello world".to_string());
+        assert_eq!(hello_world.len(), 18);
+        //+hello world\r\n = 14
+        let hello_world = RedisType::SimpleString("hello world".to_string());
+        assert_eq!(hello_world.len(), 14);
+        //-Error message\r\n = 6
+        let error = RedisType::SimpleError("Error message".to_string());
+        assert_eq!(error.len(), 16);
+        //$-1\r\n = 5
+        let null = RedisType::NullBulkString;
+        assert_eq!(null.len(), 5);
+
+        //:100\r\n = 6
+        let integer = RedisType::Integer(100);
+        assert_eq!(integer.len(), 6);
+        //:-3214\r\n = 8
+        let integer = RedisType::Integer(-3214);
+        assert_eq!(integer.len(), 8);
+
+        let result = RedisType::Array(vec![
+            RedisType::BulkString("SET".to_string()),
+            RedisType::BulkString("key".to_string()),
+            RedisType::BulkString("value".to_string()),
+        ]);
+        assert_eq!(result.len(), 33);
     }
 }
