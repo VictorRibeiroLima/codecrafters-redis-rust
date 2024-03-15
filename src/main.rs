@@ -36,6 +36,7 @@ async fn main() -> Result<()> {
                 should_reply: false,
                 redis,
                 addr: None,
+                hand_shake_port: None,
             };
             if let Err(e) = client.handle_stream().await {
                 println!("Error on master listener: {:?}", e);
@@ -56,6 +57,7 @@ async fn main() -> Result<()> {
             should_reply: true,
             redis,
             addr: Some(client_addr),
+            hand_shake_port: None,
         };
         tokio::spawn(async move {
             if let Err(e) = client.handle_stream().await {

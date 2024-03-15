@@ -1,7 +1,7 @@
 use std::{fmt::Display, time::Duration};
 
 use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
+    io::{AsyncReadExt, AsyncWriteExt, BufReader},
     net::TcpStream,
     sync::Mutex,
     time::timeout,
@@ -19,7 +19,7 @@ pub mod role;
 pub struct Replica {
     pub host: String,
     pub port: u16,
-    pub stream: Option<Mutex<TcpStream>>,
+    pub stream: Mutex<BufReader<TcpStream>>,
 }
 
 #[derive(Debug, Default)]
@@ -66,11 +66,8 @@ impl Replication {
 
         let mut remove = Vec::new();
         for (i, replica) in self.replicas.iter().enumerate() {
-            if replica.stream.is_none() {
-                continue;
-            }
             let stream = &replica.stream;
-            let mut stream = stream.as_ref().unwrap().lock().await;
+            let mut stream = stream.lock().await;
             let response = stream.write_all(&message).await;
             if let Err(e) = response {
                 println!("Failed to send message to replica: {}", e);
@@ -112,12 +109,8 @@ impl Replication {
         }
         while now < time_out {
             for replica in &self.replicas {
-                if replica.stream.is_none() {
-                    println!("Replica not properly initialized yet");
-                    continue;
-                }
                 let stream = &replica.stream;
-                let mut stream = stream.as_ref().unwrap().lock().await;
+                let mut stream = stream.lock().await;
                 let write_fut = stream.write_all(&command);
                 let response = timeout(Duration::from_millis(1), write_fut).await;
                 let response = match response {
@@ -200,12 +193,6 @@ impl Replication {
         }
 
         return sync_replicas;
-    }
-
-    pub fn find_replica_mut(&mut self, host: &str, port: u16) -> Option<&mut Replica> {
-        self.replicas
-            .iter_mut()
-            .find(|r| r.host == host && r.port == port)
     }
 }
 

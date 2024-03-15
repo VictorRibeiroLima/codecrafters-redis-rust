@@ -1,9 +1,6 @@
-use tokio::{io::AsyncWriteExt, net::TcpStream, sync::Mutex};
+use tokio::io::AsyncWriteExt;
 
-use crate::{
-    redis::{replication::Replica, types::RedisType},
-    HOST,
-};
+use crate::redis::types::RedisType;
 
 use super::{CommandReturn, Handler};
 
@@ -37,27 +34,11 @@ impl Handler for ReplConfHandler {
                             return CommandReturn::Error;
                         }
                     };
-                    let command_return: CommandReturn;
-                    let stream_result = TcpStream::connect(format!("{}:{}", HOST, port)).await;
-
-                    if let Ok(stream) = stream_result {
-                        let stream = Mutex::new(stream);
-                        command_return = CommandReturn::TcpStreamConnected;
-                        let mut redis = redis.write().await;
-                        let replica = Replica {
-                            host: HOST.to_string(),
-                            port,
-                            stream: Some(stream),
-                        };
-                        redis.replication.add_replica(replica);
-                    } else {
-                        command_return = CommandReturn::ConsumeTcpStream;
-                    }
 
                     let response = RedisType::SimpleString("OK".to_string());
                     let bytes = response.encode();
                     let _ = writer.write_all(&bytes).await;
-                    return command_return;
+                    return CommandReturn::HandShakeStarted(port);
                 }
                 "capa" => {
                     let _ = match iter.next() {
@@ -73,6 +54,7 @@ impl Handler for ReplConfHandler {
                     let response = RedisType::SimpleString("OK".to_string());
                     let bytes = response.encode();
                     let _ = writer.write_all(&bytes).await;
+                    return CommandReturn::HandShakeCapaReceived;
                 }
                 "getack" => {
                     let _ = match iter.next() {

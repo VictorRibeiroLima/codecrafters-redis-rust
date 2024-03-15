@@ -7,10 +7,7 @@ use tokio::{
     sync::{Mutex, RwLock},
 };
 
-use crate::{
-    redis::{replication::Replica, types::RedisType, Redis},
-    HOST,
-};
+use crate::redis::{replication::Replica, types::RedisType, Redis};
 
 use self::command::{handle_command, Command, CommandReturn};
 
@@ -21,6 +18,7 @@ pub struct Client {
     pub should_reply: bool,
     pub redis: Arc<RwLock<Redis>>,
     pub addr: Option<SocketAddr>,
+    pub hand_shake_port: Option<u16>,
 }
 
 impl Client {
@@ -67,32 +65,27 @@ impl Client {
                 the cli client running, to pretend that it is a replica
 
                 */
+
                 match c_return {
-                    CommandReturn::ConsumeTcpStream => {
+                    CommandReturn::HandShakeStarted(port) => {
                         if self.addr.is_none() {
                             continue;
                         }
-                        let mut redis = self.redis.write().await;
-                        let port = self.addr.as_ref().unwrap().port();
-                        let replica = Replica {
-                            host: HOST.to_string(),
-                            port,
-                            stream: None,
-                        };
-                        redis.replication.add_replica(replica);
+                        self.hand_shake_port = Some(port);
                     }
                     CommandReturn::HandShakeCompleted => {
-                        if self.addr.is_none() {
+                        if self.addr.is_none() || self.hand_shake_port.is_none() {
                             continue;
                         }
+
+                        let host = self.addr.unwrap().ip().to_string();
+                        let port = self.hand_shake_port.unwrap();
+                        println!("Replica connected from: {}:{}", host, port);
+                        let stream = self.stream;
+                        let stream = Mutex::new(stream);
+                        let replica = Replica { host, port, stream };
                         let mut redis = self.redis.write().await;
-                        let host = HOST;
-                        let port = self.addr.unwrap().port();
-                        let replica = redis
-                            .replication
-                            .find_replica_mut(&host, port)
-                            .expect("Replica not found");
-                        replica.stream = Some(Mutex::new(self.stream.into_inner()));
+                        redis.replication.add_replica(replica);
                         return Ok(());
                     }
                     _ => {}

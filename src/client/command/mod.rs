@@ -13,12 +13,12 @@ mod repl_conf;
 mod set;
 mod wait;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum CommandReturn {
     Error,
     Ok,
-    ConsumeTcpStream,
-    TcpStreamConnected,
+    HandShakeStarted(u16),
+    HandShakeCapaReceived,
     HandShakeCompleted,
 }
 
