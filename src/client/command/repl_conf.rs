@@ -75,7 +75,6 @@ impl Handler for ReplConfHandler {
                     let _ = writer.write_all(&bytes).await;
                 }
                 "getack" => {
-                    println!("getack");
                     let _ = match iter.next() {
                         Some(getack) => getack,
                         None => {

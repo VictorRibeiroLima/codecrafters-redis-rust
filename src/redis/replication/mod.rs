@@ -1,10 +1,10 @@
-use std::fmt::Display;
+use std::{fmt::Display, time::Duration};
 
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
     sync::Mutex,
-    time::sleep,
+    time::{sleep, timeout},
 };
 
 use crate::util;
@@ -86,6 +86,9 @@ impl Replication {
 
     #[allow(dead_code, unused)]
     pub async fn count_sync_replicas(&mut self, mut target: usize, mut time_limit: u64) -> usize {
+        println!("Counting sync replicas");
+        println!("Target: {}", target);
+        println!("Time limit: {}", time_limit);
         let offset = self.master_repl_offset;
         let mut sync_replicas = 0;
         let command = RedisType::Array(vec![
@@ -100,29 +103,55 @@ impl Replication {
         } else {
             target
         };
+        //All replicas are already in sync
+        if offset == 0 {
+            return self.replicas.len();
+        }
         while time_limit > 0 {
             for replica in &self.replicas {
                 if replica.stream.is_none() {
+                    println!("Replica not properly initialized yet");
                     continue;
                 }
                 let stream = &replica.stream;
                 let mut stream = stream.as_ref().unwrap().lock().await;
-                let response = stream.write_all(&command).await;
+                let write_fut = stream.write_all(&command);
+                let response = timeout(Duration::from_millis(1), write_fut).await;
+                let response = match response {
+                    Ok(r) => r,
+                    Err(_) => {
+                        println!("Failed to send message to replica: timeout");
+                        time_limit = time_limit.checked_sub(1).unwrap_or(0);
+                        continue;
+                    }
+                };
                 if let Err(e) = response {
                     println!("Failed to send message to replica: {}", e);
                 }
                 let mut buffer = [0; 128];
 
-                let n = match stream.read(&mut buffer).await {
-                    Ok(n) => n,
-                    Err(e) => {
-                        println!("Failed to read from replica: {}", e);
+                let read_fut = stream.read(&mut buffer);
+                let response = timeout(Duration::from_millis(1), read_fut).await;
+                match response {
+                    Ok(response) => {
+                        let n = match response {
+                            Ok(n) => n,
+                            Err(e) => {
+                                println!("Failed to read from replica: {}", e);
+                                continue;
+                            }
+                        };
+                        if n == 0 {
+                            println!("Replica disconnected");
+                            continue;
+                        }
+                    }
+                    Err(_) => {
+                        time_limit = time_limit.checked_sub(1).unwrap_or(0);
                         continue;
                     }
                 };
-                if n == 0 {
-                    continue;
-                }
+
                 let mut response = match RedisType::from_buffer(&buffer) {
                     Ok(r) => r,
                     Err(_) => {
@@ -153,14 +182,17 @@ impl Replication {
                 };
                 if r_offset == offset {
                     sync_replicas += 1;
+                } else {
+                    println!("Replica offset: {}, Master offset: {}", r_offset, offset);
                 }
             }
             self.master_repl_offset += command_len as u64;
-            time_limit -= 1;
+
             if sync_replicas >= target {
                 break;
             }
             sleep(std::time::Duration::from_millis(1)).await;
+            time_limit = time_limit.checked_sub(1).unwrap_or(0);
         }
 
         return sync_replicas;
