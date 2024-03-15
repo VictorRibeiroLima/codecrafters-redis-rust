@@ -31,10 +31,11 @@ async fn main() -> Result<()> {
                 .hand_shake()
                 .await
                 .expect("Failed to connect to master");
-            let mut client = Client {
+            let client = Client {
                 stream,
                 should_reply: false,
                 redis,
+                addr: None,
             };
             if let Err(e) = client.handle_stream().await {
                 println!("Error on master listener: {:?}", e);
@@ -50,10 +51,11 @@ async fn main() -> Result<()> {
 
         let redis = Arc::clone(&redis);
         let stream = tokio::io::BufReader::new(stream);
-        let mut client = Client {
+        let client = Client {
             stream,
             should_reply: true,
             redis,
+            addr: Some(client_addr),
         };
         tokio::spawn(async move {
             if let Err(e) = client.handle_stream().await {

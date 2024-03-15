@@ -1,18 +1,18 @@
-use std::sync::Arc;
+use std::{net::SocketAddr, sync::Arc};
 
 use anyhow::Result;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt, BufReader},
     net::TcpStream,
-    sync::{
-        mpsc::{unbounded_channel, UnboundedSender},
-        RwLock,
-    },
+    sync::{Mutex, RwLock},
 };
 
-use crate::redis::{types::RedisType, Redis};
+use crate::{
+    redis::{replication::Replica, types::RedisType, Redis},
+    HOST,
+};
 
-use self::command::{handle_command, Command};
+use self::command::{handle_command, Command, CommandReturn};
 
 mod command;
 
@@ -20,46 +20,86 @@ pub struct Client {
     pub stream: BufReader<TcpStream>,
     pub should_reply: bool,
     pub redis: Arc<RwLock<Redis>>,
+    pub addr: Option<SocketAddr>,
 }
 
 impl Client {
-    pub async fn handle_stream(&mut self) -> Result<()> {
+    pub async fn handle_stream(mut self) -> Result<()> {
         println!("Shoud reply: {}", self.should_reply);
         let mut buf = [0; 512];
 
-        let (sender, mut receiver) = unbounded_channel::<Vec<u8>>();
         loop {
-            /*This is a unnecessary hack,the "replication-11" test
-            doesn't really creates a replica of the redis server
-            it just pretends that it does, so we need to keep
-            the cli client running, to pretend that it is a replica
+            let n = self.stream.read(&mut buf).await;
 
-            */
-            tokio::select! {
-                n = self.stream.read(&mut buf) => {
-                    let n = match n {
-                        Ok(n) => n,
-                        Err(e) => {
-                            println!("Failed to read from socket; err = {:?}", e);
-                            return Ok(());
-                        }
-                    };
-                    if n == 0 {
-                        break;
-                    }
-
-                    self.handle_command(&mut buf, n, sender.clone(),self.should_reply).await?;
+            let n = match n {
+                Ok(n) => n,
+                Err(e) => {
+                    println!("Failed to read from socket; err = {:?}", e);
+                    return Ok(());
                 }
-                response = receiver.recv() => {
-                    match response {
-                        Some(response) => {
-                            self.stream.write_all(&response).await?;
-                            self.stream.flush().await?;
+            };
+            if n == 0 {
+                break;
+            }
+
+            let commands = self.get_commands(&mut buf, n)?;
+            let should_reply = self.should_reply;
+            for command in commands {
+                let command_len = command.len();
+                let result = Command::split_type(command);
+                let (command, args) = match result {
+                    Ok((c, a)) => (c, a),
+                    Err(_) => {
+                        if !should_reply {
+                            continue;
                         }
-                        None => {
-                            println!("No response");
-                        }
+                        let e = "-ERR unknown command\r\n".to_string();
+                        self.stream.write_all(e.as_bytes()).await?;
+                        continue;
                     }
+                };
+                let (_, writer) = self.stream.get_mut().split();
+                let c_return =
+                    handle_command(command, args, &self.redis, writer, self.should_reply).await;
+                /*This is a unnecessary hack,the "replication-11" test
+                doesn't really creates a replica of the redis server
+                it just pretends that it does, so we need to keep
+                the cli client running, to pretend that it is a replica
+
+                */
+                match c_return {
+                    CommandReturn::ConsumeTcpStream => {
+                        if self.addr.is_none() {
+                            continue;
+                        }
+                        let mut redis = self.redis.write().await;
+                        let port = self.addr.as_ref().unwrap().port();
+                        let replica = Replica {
+                            host: HOST.to_string(),
+                            port,
+                            stream: None,
+                        };
+                        redis.replication.add_replica(replica);
+                    }
+                    CommandReturn::HandShakeCompleted => {
+                        if self.addr.is_none() {
+                            continue;
+                        }
+                        let mut redis = self.redis.write().await;
+                        let host = HOST;
+                        let port = self.addr.unwrap().port();
+                        let replica = redis
+                            .replication
+                            .find_replica_mut(&host, port)
+                            .expect("Replica not found");
+                        replica.stream = Some(Mutex::new(self.stream.into_inner()));
+                        return Ok(());
+                    }
+                    _ => {}
+                }
+                if !should_reply {
+                    let mut redis = self.redis.write().await;
+                    redis.replication.slave_read_repl_offset += command_len as u64;
                 }
             }
         }
@@ -67,110 +107,13 @@ impl Client {
         Ok(())
     }
 
-    async fn handle_command(
-        &mut self,
-        buff: &mut [u8; 512],
-        n: usize,
-        sender: UnboundedSender<Vec<u8>>,
-        should_reply: bool,
-    ) -> Result<()> {
-        let buff = &buff[..n];
+    fn get_commands(&mut self, buff: &mut [u8; 512], n: usize) -> Result<Vec<RedisType>> {
+        let buff: &[u8] = &buff[..n];
         let commands = match RedisType::from_buffer(buff) {
             Ok(c) => c,
-            Err(_) => {
-                if !should_reply {
-                    return Ok(());
-                }
-                let e = "-ERR unknown command\r\n".to_string();
-                self.stream.write_all(e.as_bytes()).await?;
-                return Ok(());
-            }
+            Err(_) => return Err(anyhow::Error::msg("")),
         };
 
-        for command in commands {
-            let command_len = command.len();
-            let result = Command::split_type(command);
-            let (command, args) = match result {
-                Ok((c, a)) => (c, a),
-                Err(_) => {
-                    if !should_reply {
-                        continue;
-                    }
-                    let e = "-ERR unknown command\r\n".to_string();
-                    self.stream.write_all(e.as_bytes()).await?;
-                    continue;
-                }
-            };
-            let (_, writer) = self.stream.get_mut().split();
-            handle_command(
-                command,
-                args,
-                &self.redis,
-                writer,
-                sender.clone(),
-                self.should_reply,
-            )
-            .await;
-            if !should_reply {
-                let mut redis = self.redis.write().await;
-                redis.replication.slave_read_repl_offset += command_len as u64;
-            }
-        }
-        Ok(())
+        return Ok(commands);
     }
 }
-
-/*
-fn parse_message<'a>(s: &'a str) -> Result<(Command, Vec<&'a str>), String> {
-    println!("Parsing message: {:?}", s);
-    let lines: Vec<&str> = s.lines().collect();
-
-    let first_line = match lines.get(0) {
-        Some(line) => *line,
-        None => return Err("No message\r\n".to_string()),
-    };
-
-    if !first_line.contains("*") {
-        return Err("Unknown message format\r\n".to_string());
-    }
-
-    let num_of_args = first_line
-        .chars()
-        .skip(1)
-        .collect::<String>()
-        .parse::<usize>()
-        .map_err(|_| "Invalid number of arguments\r\n".to_string())?;
-
-    let num_of_args = num_of_args * 2;
-
-    if lines.len() - 1 != num_of_args {
-        return Err("Invalid number of arguments\r\n".to_string());
-    }
-
-    let mut args: Vec<&str> = vec![];
-
-    for i in 1..=num_of_args {
-        if i % 2 != 0 {
-            continue;
-        }
-        if lines[i].starts_with("$") {
-            return Err("Invalid argument format\r\n".to_string());
-        }
-        let arg = lines[i];
-        args.push(arg);
-    }
-
-    if args.len() == 0 {
-        return Err("No command\r\n".to_string());
-    }
-
-    let command_str = args[0];
-
-    let command = match Command::from_str(command_str) {
-        Ok(c) => c,
-        Err(_) => return Err("Unknown command\r\n".to_string()),
-    };
-    Ok((command, args[1..].to_vec()))
-}
-
-*/

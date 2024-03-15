@@ -1,14 +1,17 @@
 use std::fmt::Display;
 
 use tokio::{
-    io::AsyncWriteExt,
+    io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
-    sync::{mpsc::UnboundedSender, Mutex},
+    sync::Mutex,
+    time::sleep,
 };
 
 use crate::util;
 
 use self::role::Role;
+
+use super::types::RedisType;
 
 pub mod role;
 
@@ -16,7 +19,6 @@ pub mod role;
 pub struct Replica {
     pub host: String,
     pub port: u16,
-    pub channel: UnboundedSender<Vec<u8>>,
     pub stream: Option<Mutex<TcpStream>>,
 }
 
@@ -64,29 +66,110 @@ impl Replication {
 
         let mut remove = Vec::new();
         for (i, replica) in self.replicas.iter().enumerate() {
-            match &replica.stream {
-                Some(stream) => {
-                    let mut stream = stream.lock().await;
-                    let response = stream.write_all(&message).await;
-                    if let Err(e) = response {
-                        println!("Failed to send message to replica: {}", e);
-                        self.connected_slaves -= 1;
-                        remove.push(i);
-                    }
-                }
-                None => {
-                    let channel = &replica.channel;
-                    let r = channel.send(message.clone());
-                    if let Err(e) = r {
-                        println!("Failed to send message to replica: {}", e);
-                    }
-                }
+            if replica.stream.is_none() {
+                continue;
+            }
+            let stream = &replica.stream;
+            let mut stream = stream.as_ref().unwrap().lock().await;
+            let response = stream.write_all(&message).await;
+            if let Err(e) = response {
+                println!("Failed to send message to replica: {}", e);
+                self.connected_slaves -= 1;
+                remove.push(i);
             }
         }
 
         for i in remove.iter().rev() {
             self.replicas.swap_remove(*i);
         }
+    }
+
+    #[allow(dead_code, unused)]
+    pub async fn count_sync_replicas(&mut self, mut target: usize, mut time_limit: u64) -> usize {
+        let offset = self.master_repl_offset;
+        let mut sync_replicas = 0;
+        let command = RedisType::Array(vec![
+            RedisType::BulkString("REPLCONF".to_string()),
+            RedisType::BulkString("GETACK".to_string()),
+            RedisType::BulkString("*".to_string()),
+        ]);
+        let command_len = command.len();
+        let command = command.encode();
+        target = if target > self.replicas.len() {
+            self.replicas.len()
+        } else {
+            target
+        };
+        while time_limit > 0 {
+            for replica in &self.replicas {
+                if replica.stream.is_none() {
+                    continue;
+                }
+                let stream = &replica.stream;
+                let mut stream = stream.as_ref().unwrap().lock().await;
+                let response = stream.write_all(&command).await;
+                if let Err(e) = response {
+                    println!("Failed to send message to replica: {}", e);
+                }
+                let mut buffer = [0; 128];
+
+                let n = match stream.read(&mut buffer).await {
+                    Ok(n) => n,
+                    Err(e) => {
+                        println!("Failed to read from replica: {}", e);
+                        continue;
+                    }
+                };
+                if n == 0 {
+                    continue;
+                }
+                let mut response = match RedisType::from_buffer(&buffer) {
+                    Ok(r) => r,
+                    Err(_) => {
+                        println!("Failed to parse response from replica");
+                        continue;
+                    }
+                };
+                let response = match response.pop() {
+                    Some(RedisType::Array(response)) => response,
+                    _ => {
+                        println!("Invalid response from replica");
+                        continue;
+                    }
+                };
+                let r_offset = match response.get(2) {
+                    Some(RedisType::BulkString(offset)) => offset,
+                    _ => {
+                        println!("Offset not found in response from replica");
+                        continue;
+                    }
+                };
+                let r_offset = match r_offset.parse::<u64>() {
+                    Ok(r_offset) => r_offset,
+                    Err(_) => {
+                        println!("Failed to parse offset from response from replica");
+                        continue;
+                    }
+                };
+                if r_offset == offset {
+                    sync_replicas += 1;
+                }
+            }
+            self.master_repl_offset += command_len as u64;
+            time_limit -= 1;
+            if sync_replicas >= target {
+                break;
+            }
+            sleep(std::time::Duration::from_millis(1)).await;
+        }
+
+        return sync_replicas;
+    }
+
+    pub fn find_replica_mut(&mut self, host: &str, port: u16) -> Option<&mut Replica> {
+        self.replicas
+            .iter_mut()
+            .find(|r| r.host == host && r.port == port)
     }
 }
 

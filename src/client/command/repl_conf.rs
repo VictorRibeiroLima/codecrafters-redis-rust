@@ -5,12 +5,12 @@ use crate::{
     HOST,
 };
 
-use super::Handler;
+use super::{CommandReturn, Handler};
 
 pub struct ReplConfHandler;
 
 impl Handler for ReplConfHandler {
-    async fn handle<'a>(params: super::HandlerParams<'a>) {
+    async fn handle<'a>(params: super::HandlerParams<'a>) -> CommandReturn {
         let mut writer = params.writer;
         let args = params.args;
         let redis = params.redis;
@@ -27,35 +27,37 @@ impl Handler for ReplConfHandler {
                                     RedisType::SimpleError("ERR invalid port".to_string());
                                 let bytes = response.encode();
                                 let _ = writer.write_all(&bytes).await;
-                                return;
+                                return CommandReturn::Error;
                             }
                         },
                         None => {
                             let response = RedisType::SimpleError("ERR missing port".to_string());
                             let bytes = response.encode();
                             let _ = writer.write_all(&bytes).await;
-                            return;
+                            return CommandReturn::Error;
                         }
                     };
-                    let mut stream = None;
+                    let command_return: CommandReturn;
                     let stream_result = TcpStream::connect(format!("{}:{}", HOST, port)).await;
 
-                    if let Ok(stream_i) = stream_result {
-                        let stream_i = Mutex::new(stream_i);
-                        stream = Some(stream_i);
+                    if let Ok(stream) = stream_result {
+                        let stream = Mutex::new(stream);
+                        command_return = CommandReturn::TcpStreamConnected;
+                        let mut redis = redis.write().await;
+                        let replica = Replica {
+                            host: HOST.to_string(),
+                            port,
+                            stream: Some(stream),
+                        };
+                        redis.replication.add_replica(replica);
+                    } else {
+                        command_return = CommandReturn::ConsumeTcpStream;
                     }
-                    let mut redis = redis.write().await;
-                    let replica = Replica {
-                        host: HOST.to_string(),
-                        port,
-                        channel: params.sender,
-                        stream,
-                    };
-                    redis.replication.add_replica(replica);
+
                     let response = RedisType::SimpleString("OK".to_string());
                     let bytes = response.encode();
                     let _ = writer.write_all(&bytes).await;
-                    break;
+                    return command_return;
                 }
                 "capa" => {
                     let _ = match iter.next() {
@@ -64,7 +66,7 @@ impl Handler for ReplConfHandler {
                             let response = RedisType::SimpleError("ERR missing capa".to_string());
                             let bytes = response.encode();
                             let _ = writer.write_all(&bytes).await;
-                            return;
+                            return CommandReturn::Error;
                         }
                     };
 
@@ -80,7 +82,7 @@ impl Handler for ReplConfHandler {
                             let response = RedisType::SimpleError("ERR missing getack".to_string());
                             let bytes = response.encode();
                             let _ = writer.write_all(&bytes).await;
-                            return;
+                            return CommandReturn::Error;
                         }
                     };
 
@@ -97,5 +99,6 @@ impl Handler for ReplConfHandler {
                 _ => {}
             }
         }
+        return CommandReturn::Ok;
     }
 }

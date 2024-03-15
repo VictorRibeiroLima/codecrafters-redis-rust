@@ -4,12 +4,12 @@ use tokio::{io::AsyncWriteExt, sync::RwLock};
 
 use crate::redis::{types::RedisType, Redis};
 
-use super::Handler;
+use super::{CommandReturn, Handler};
 
 pub struct PsyncHandler;
 
 impl Handler for PsyncHandler {
-    async fn handle<'a>(params: super::HandlerParams<'a>) {
+    async fn handle<'a>(params: super::HandlerParams<'a>) -> CommandReturn {
         let mut writer = params.writer;
         let args = params.args;
         let redis = params.redis;
@@ -21,6 +21,10 @@ impl Handler for PsyncHandler {
         let file = redis.rdb_file_bytes();
         let file = RedisType::Bytes(file);
         let _ = writer.write_all(&file.encode()).await;
+        match response {
+            RedisType::SimpleString(_) => CommandReturn::HandShakeCompleted,
+            _ => CommandReturn::Error,
+        }
     }
 }
 async fn handle_psync(args: Vec<String>, redis: &Arc<RwLock<Redis>>) -> RedisType {

@@ -2,12 +2,12 @@ use tokio::io::AsyncWriteExt;
 
 use crate::redis::types::RedisType;
 
-use super::Handler;
+use super::{CommandReturn, Handler};
 
 pub struct EchoHandler;
 
 impl Handler for EchoHandler {
-    async fn handle<'a>(params: super::HandlerParams<'a>) {
+    async fn handle<'a>(params: super::HandlerParams<'a>) -> CommandReturn {
         if params.should_reply {
             let mut stream = params.writer;
             let args = params.args;
@@ -16,5 +16,6 @@ impl Handler for EchoHandler {
             let response = RedisType::SimpleString(str);
             let _ = stream.write_all(&response.encode()).await;
         }
+        return CommandReturn::Ok;
     }
 }

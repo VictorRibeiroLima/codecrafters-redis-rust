@@ -1,9 +1,6 @@
 use std::{str::FromStr, sync::Arc};
 
-use tokio::{
-    net::tcp::WriteHalf,
-    sync::{mpsc::UnboundedSender, RwLock},
-};
+use tokio::{net::tcp::WriteHalf, sync::RwLock};
 
 use crate::redis::{types::RedisType, Redis};
 
@@ -11,21 +8,29 @@ mod echo;
 mod get;
 mod info;
 mod ping;
-
 mod psync;
 mod repl_conf;
 mod set;
+mod wait;
+
+#[derive(Debug, PartialEq)]
+pub enum CommandReturn {
+    Error,
+    Ok,
+    ConsumeTcpStream,
+    TcpStreamConnected,
+    HandShakeCompleted,
+}
 
 struct HandlerParams<'a> {
     args: Vec<String>,
     redis: &'a Arc<RwLock<Redis>>,
     writer: WriteHalf<'a>,
-    sender: UnboundedSender<Vec<u8>>,
     should_reply: bool,
 }
 
 trait Handler {
-    async fn handle<'a>(params: HandlerParams<'a>);
+    async fn handle<'a>(params: HandlerParams<'a>) -> CommandReturn;
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -37,6 +42,7 @@ pub enum Command {
     Info,
     ReplConf,
     Psync,
+    Wait,
 }
 
 impl FromStr for Command {
@@ -51,6 +57,7 @@ impl FromStr for Command {
             "INFO" => Ok(Command::Info),
             "REPLCONF" => Ok(Command::ReplConf),
             "PSYNC" => Ok(Command::Psync),
+            "WAIT" => Ok(Command::Wait),
             _ => Err(()),
         }
     }
@@ -86,6 +93,7 @@ impl Into<RedisType> for Command {
             Command::Info => RedisType::BulkString("INFO".to_string()),
             Command::ReplConf => RedisType::BulkString("REPLCONF".to_string()),
             Command::Psync => RedisType::BulkString("PSYNC".to_string()),
+            Command::Wait => RedisType::BulkString("WAIT".to_string()),
         }
     }
 }
@@ -95,14 +103,12 @@ pub async fn handle_command<'a>(
     args: Vec<String>,
     redis: &'a Arc<RwLock<Redis>>,
     writer: WriteHalf<'a>,
-    sender: UnboundedSender<Vec<u8>>,
     should_reply: bool,
-) {
+) -> CommandReturn {
     let params = HandlerParams {
         args,
         redis,
         writer,
-        sender,
         should_reply,
     };
     match command {
@@ -113,5 +119,6 @@ pub async fn handle_command<'a>(
         Command::Info => info::InfoHandler::handle(params).await,
         Command::ReplConf => repl_conf::ReplConfHandler::handle(params).await,
         Command::Psync => psync::PsyncHandler::handle(params).await,
-    };
+        Command::Wait => wait::WaitHandler::handle(params).await,
+    }
 }

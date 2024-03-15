@@ -26,7 +26,7 @@ use tokio::io::AsyncWriteExt;
 
 use crate::redis::types::RedisType;
 
-use super::Handler;
+use super::{CommandReturn, Handler};
 
 #[derive(Debug, PartialEq)]
 enum InfoCommand {
@@ -81,9 +81,9 @@ impl FromStr for InfoCommand {
 pub struct InfoHandler;
 
 impl Handler for InfoHandler {
-    async fn handle<'a>(params: super::HandlerParams<'a>) {
+    async fn handle<'a>(params: super::HandlerParams<'a>) -> CommandReturn {
         if !params.should_reply {
-            return;
+            return CommandReturn::Ok;
         }
         let mut stream = params.writer;
         let args = params.args;
@@ -95,7 +95,7 @@ impl Handler for InfoHandler {
             Err(e) => {
                 let response = e.encode();
                 let _ = stream.write_all(&response).await;
-                return;
+                return CommandReturn::Error;
             }
         };
         let redis = redis.read().await;
@@ -109,12 +109,13 @@ impl Handler for InfoHandler {
                 let bytes = response.encode();
                 let _ = stream.write_all(&bytes).await;
 
-                return;
+                return CommandReturn::Error;
             }
         };
 
         let response = RedisType::BulkString(response);
         let bytes = response.encode();
         let _ = stream.write_all(&bytes).await;
+        CommandReturn::Ok
     }
 }
