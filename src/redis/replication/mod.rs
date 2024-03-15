@@ -4,7 +4,7 @@ use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
     sync::Mutex,
-    time::{sleep, timeout},
+    time::timeout,
 };
 
 use crate::util;
@@ -85,10 +85,12 @@ impl Replication {
     }
 
     #[allow(dead_code, unused)]
-    pub async fn count_sync_replicas(&mut self, mut target: usize, mut time_limit: u64) -> usize {
-        println!("Counting sync replicas");
-        println!("Target: {}", target);
-        println!("Time limit: {}", time_limit);
+    pub async fn count_sync_replicas(&mut self, mut target: usize, time_limit: u64) -> usize {
+        let mut now = std::time::SystemTime::now();
+        let mut time_out = now
+            .checked_add(std::time::Duration::from_millis(time_limit))
+            .unwrap();
+
         let offset = self.master_repl_offset;
         let mut sync_replicas = 0;
         let command = RedisType::Array(vec![
@@ -98,16 +100,18 @@ impl Replication {
         ]);
         let command_len = command.len();
         let command = command.encode();
-        target = if target > self.replicas.len() {
-            self.replicas.len()
-        } else {
-            target
-        };
+        let r_len = self.replicas.len();
+        target = if target > r_len { r_len } else { target };
+        println!("Counting sync replicas");
+        println!("Target: {}", target);
+        println!("Time limit: {}", time_limit);
+        println!("Replicas: {}", r_len);
+        println!("Offset: {}", offset);
         //All replicas are already in sync
         if offset == 0 {
-            return self.replicas.len();
+            return r_len;
         }
-        while time_limit > 0 {
+        while now < time_out {
             for replica in &self.replicas {
                 if replica.stream.is_none() {
                     println!("Replica not properly initialized yet");
@@ -121,7 +125,6 @@ impl Replication {
                     Ok(r) => r,
                     Err(_) => {
                         println!("Failed to send message to replica: timeout");
-                        time_limit = time_limit.checked_sub(1).unwrap_or(0);
                         continue;
                     }
                 };
@@ -132,7 +135,7 @@ impl Replication {
 
                 let read_fut = stream.read(&mut buffer);
                 let response = timeout(Duration::from_millis(1), read_fut).await;
-                match response {
+                let n = match response {
                     Ok(response) => {
                         let n = match response {
                             Ok(n) => n,
@@ -145,16 +148,19 @@ impl Replication {
                             println!("Replica disconnected");
                             continue;
                         }
+                        n
                     }
                     Err(_) => {
-                        time_limit = time_limit.checked_sub(1).unwrap_or(0);
                         continue;
                     }
                 };
 
+                let buffer = &buffer[..n];
+
                 let mut response = match RedisType::from_buffer(&buffer) {
                     Ok(r) => r,
                     Err(_) => {
+                        println!("Buffer: {:?}", buffer);
                         println!("Failed to parse response from replica");
                         continue;
                     }
@@ -180,7 +186,7 @@ impl Replication {
                         continue;
                     }
                 };
-                if r_offset == offset {
+                if r_offset >= offset {
                     sync_replicas += 1;
                 } else {
                     println!("Replica offset: {}, Master offset: {}", r_offset, offset);
@@ -191,8 +197,7 @@ impl Replication {
             if sync_replicas >= target {
                 break;
             }
-            sleep(std::time::Duration::from_millis(1)).await;
-            time_limit = time_limit.checked_sub(1).unwrap_or(0);
+            now = std::time::SystemTime::now();
         }
 
         return sync_replicas;
