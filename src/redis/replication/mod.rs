@@ -84,10 +84,9 @@ impl Replication {
         }
     }
 
-    #[allow(dead_code, unused)]
     pub async fn count_sync_replicas(&mut self, mut target: usize, time_limit: u64) -> usize {
         let mut now = std::time::SystemTime::now();
-        let mut time_out = now
+        let time_out = now
             .checked_add(std::time::Duration::from_millis(time_limit))
             .unwrap();
 
