@@ -23,7 +23,6 @@ pub struct Client {
 
 impl Client {
     pub async fn handle_stream(mut self) -> Result<()> {
-        println!("Shoud reply: {}", self.should_reply);
         let mut buf = [0; 512];
 
         loop {
@@ -96,7 +95,6 @@ impl Client {
                 }
             }
         }
-        println!("Client disconnected");
         Ok(())
     }
 

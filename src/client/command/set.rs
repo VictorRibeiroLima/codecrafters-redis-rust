@@ -53,7 +53,7 @@ impl super::Handler for SetHandler {
                     }
                 }
                 let expiration = match args.get(3) {
-                    Some(expiration) => match expiration.parse::<u128>() {
+                    Some(expiration) => match expiration.parse::<u64>() {
                         Ok(expiration) => Some(expiration),
                         Err(_) => {
                             if !params.should_reply {

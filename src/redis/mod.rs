@@ -1,6 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     string,
+    time::{Duration, UNIX_EPOCH},
 };
 
 use tokio::{
@@ -51,7 +52,7 @@ impl Redis {
         redis
     }
 
-    pub fn set(&mut self, key: String, value: String, expiration: Option<u128>) {
+    pub fn set(&mut self, key: String, value: String, expiration: Option<u64>) {
         let value = Value::new(value, expiration);
         self.memory.insert(key, value);
     }
@@ -196,22 +197,29 @@ impl Redis {
         let file = std::fs::read(&path);
         let file = match file {
             Ok(file) => file,
-            Err(_) => {
+            Err(e) => {
                 println!("Failed to read file:{}", path);
+                println!("Error:{}", e);
                 return;
             }
         };
         let mut file = Bytes::from(file);
 
+        let file_len = file.len();
         let magic_number: [u8; 5] = file.get(0..5).unwrap().try_into().unwrap();
         let version: [u8; 4] = file.get(5..9).unwrap().try_into().unwrap();
 
-        for i in 9..file.len() {
+        let mut _oxfbi = 0;
+        for i in 9..file_len {
             if file[i] == 0xFB {
-                let _ = file.split_to(i);
+                _oxfbi = i;
                 break;
             }
         }
+        if _oxfbi == 0 {
+            return;
+        }
+        let _ = file.split_to(_oxfbi);
         //Ignore the 0xFB byte
         let _ = file.get_u8();
 
@@ -230,11 +238,32 @@ impl Redis {
         let mut new_keys = HashSet::new();
 
         for _ in 0..table_length {
-            let value_type = file.get_u8();
+            let mut value_type = file.get_u8();
+            let mut expiration = None;
+            if value_type == 0xFD {
+                let mut arr = vec![];
+                for _ in 0..4 {
+                    arr.push(file.get_u8());
+                }
+                let dur = u64::from_le_bytes(arr.try_into().unwrap());
+                expiration = Some(UNIX_EPOCH + Duration::from_secs(dur));
+
+                value_type = file.get_u8();
+            } else if value_type == 0xFC {
+                let mut arr = vec![];
+                for _ in 0..8 {
+                    arr.push(file.get_u8());
+                }
+                let dur = u64::from_le_bytes(arr.try_into().unwrap());
+                let dur = dur / 1000;
+                expiration = Some(UNIX_EPOCH + Duration::from_secs(dur));
+
+                value_type = file.get_u8();
+            }
             if value_type == 0 {
                 let key = encode_string(&mut file).unwrap();
                 let value = encode_string(&mut file).unwrap();
-                new_memory.insert(key.clone(), Value::new(value, None));
+                new_memory.insert(key.clone(), Value::new_with_expiration(value, expiration));
                 new_keys.insert(key);
             }
         }
@@ -260,4 +289,23 @@ fn encode_string(file: &mut Bytes) -> Result<String, string::FromUtf8Error> {
     let key_length = encode_length(file, length);
     let i = file.split_to(key_length.try_into().unwrap()).to_vec();
     String::from_utf8(i)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_create_from_file() {
+        let config = Config {
+            db_file_name: Some("dump.rdb".to_string()),
+            dir: Some(".".to_string()),
+            port: 6379,
+            replica_of: None,
+        };
+
+        let redis = Redis::new(config);
+        let keys = redis.keys.len();
+        assert_eq!(keys, 4);
+    }
 }

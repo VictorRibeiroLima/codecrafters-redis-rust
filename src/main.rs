@@ -48,7 +48,6 @@ async fn main() -> Result<()> {
 
     loop {
         let (stream, client_addr) = listener.accept().await?;
-        println!("Client connected from: {}", client_addr);
 
         let redis = Arc::clone(&redis);
         let stream = tokio::io::BufReader::new(stream);
