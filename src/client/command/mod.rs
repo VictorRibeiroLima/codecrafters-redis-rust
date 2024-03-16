@@ -8,6 +8,7 @@ mod config;
 mod echo;
 mod get;
 mod info;
+mod keys;
 mod ping;
 mod psync;
 mod repl_conf;
@@ -45,6 +46,7 @@ pub enum Command {
     Psync,
     Config,
     Wait,
+    Keys,
 }
 
 impl FromStr for Command {
@@ -61,6 +63,7 @@ impl FromStr for Command {
             "PSYNC" => Ok(Command::Psync),
             "WAIT" => Ok(Command::Wait),
             "CONFIG" => Ok(Command::Config),
+            "KEYS" => Ok(Command::Keys),
             _ => Err(()),
         }
     }
@@ -98,6 +101,7 @@ impl Into<RedisType> for Command {
             Command::Psync => RedisType::BulkString("PSYNC".to_string()),
             Command::Wait => RedisType::BulkString("WAIT".to_string()),
             Command::Config => RedisType::BulkString("CONFIG".to_string()),
+            Command::Keys => RedisType::BulkString("KEYS".to_string()),
         }
     }
 }
@@ -125,5 +129,6 @@ pub async fn handle_command<'a>(
         Command::Psync => psync::PsyncHandler::handle(params).await,
         Command::Wait => wait::WaitHandler::handle(params).await,
         Command::Config => config::ConfigHandler::handle(params).await,
+        Command::Keys => keys::KeysHandler::handle(params).await,
     }
 }

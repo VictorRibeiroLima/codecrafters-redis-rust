@@ -1,9 +1,14 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    string,
+};
 
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt, BufReader},
     net::TcpStream,
 };
+
+use bytes::{Buf, Bytes};
 
 use self::{
     config::Config,
@@ -20,6 +25,10 @@ mod value;
 #[derive(Debug, Default)]
 #[allow(dead_code)]
 pub struct Redis {
+    magic_number: [u8; 5],
+    version: [u8; 4],
+    table_size: u32,
+    expiry_size: u32,
     memory: HashMap<String, Value>,
     keys: HashSet<String>,
     pub replication: Replication,
@@ -28,12 +37,17 @@ pub struct Redis {
 
 impl Redis {
     pub fn new(config: Config) -> Self {
-        let redis = Self {
+        let mut redis = Self {
             replication: Replication::new(config.replica_of.clone()),
             config,
             ..Default::default()
         };
 
+        if redis.config.dir.is_some() && redis.config.db_file_name.is_some() {
+            let dir = redis.config.dir.clone().unwrap();
+            let file = redis.config.db_file_name.clone().unwrap();
+            redis.re_config(&dir, &file);
+        }
         redis
     }
 
@@ -154,6 +168,18 @@ impl Redis {
         }
     }
 
+    pub fn rdb_file_bytes(&self) -> Vec<u8> {
+        self.gen_rdb_file()
+    }
+
+    pub fn get_keys(&self) -> RedisType {
+        let mut arr = Vec::new();
+        for key in &self.keys {
+            arr.push(RedisType::BulkString(key.clone()));
+        }
+        RedisType::Array(arr)
+    }
+
     fn gen_rdb_file(&self) -> Vec<u8> {
         let file = vec![
             82, 69, 68, 73, 83, 48, 48, 48, 57, 250, 9, 114, 101, 100, 105, 115, 45, 118, 101, 114,
@@ -165,7 +191,73 @@ impl Redis {
         file
     }
 
-    pub fn rdb_file_bytes(&self) -> Vec<u8> {
-        self.gen_rdb_file()
+    fn re_config(&mut self, dir: &str, file: &str) {
+        let path = format!("{}/{}", dir, file);
+        let file = std::fs::read(&path);
+        let file = match file {
+            Ok(file) => file,
+            Err(_) => {
+                println!("Failed to read file:{}", path);
+                return;
+            }
+        };
+        let mut file = Bytes::from(file);
+
+        let magic_number: [u8; 5] = file.get(0..5).unwrap().try_into().unwrap();
+        let version: [u8; 4] = file.get(5..9).unwrap().try_into().unwrap();
+
+        for i in 9..file.len() {
+            if file[i] == 0xFB {
+                let _ = file.split_to(i);
+                break;
+            }
+        }
+        //Ignore the 0xFB byte
+        let _ = file.get_u8();
+
+        let length = file.get_u8();
+        let table_length = encode_length(&mut file, length);
+
+        let length = file.get_u8();
+        let table_expiry_length = encode_length(&mut file, length);
+
+        self.magic_number = magic_number;
+        self.version = version;
+        self.table_size = table_length;
+        self.expiry_size = table_expiry_length;
+
+        let mut new_memory = HashMap::new();
+        let mut new_keys = HashSet::new();
+
+        for _ in 0..table_length {
+            let value_type = file.get_u8();
+            if value_type == 0 {
+                let key = encode_string(&mut file).unwrap();
+                let value = encode_string(&mut file).unwrap();
+                new_memory.insert(key.clone(), Value::new(value, None));
+                new_keys.insert(key);
+            }
+        }
+
+        self.memory = new_memory;
+        self.keys = new_keys;
     }
+}
+
+//See:https://rdb.fnordig.de/file_format.html#length-encoded
+fn encode_length(file: &mut Bytes, length: u8) -> u32 {
+    match length {
+        0b00000000..=0b00111111 => u32::from_be_bytes([0x00, 0x00, 0x00, length]),
+        0b01000000..=0b01111111 => u32::from_be_bytes([0x00, 0x00, file.get_u8(), length]),
+        0b10000000..=0b10111111 => file.get_u32(),
+        0b11000000..=0b11111111 => 00,
+    }
+}
+
+//See:https://rdb.fnordig.de/file_format.html#string-encoding
+fn encode_string(file: &mut Bytes) -> Result<String, string::FromUtf8Error> {
+    let length = file.get_u8();
+    let key_length = encode_length(file, length);
+    let i = file.split_to(key_length.try_into().unwrap()).to_vec();
+    String::from_utf8(i)
 }
