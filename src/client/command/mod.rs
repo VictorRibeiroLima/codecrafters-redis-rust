@@ -4,6 +4,7 @@ use tokio::{net::tcp::WriteHalf, sync::RwLock};
 
 use crate::redis::{types::RedisType, Redis};
 
+mod config;
 mod echo;
 mod get;
 mod info;
@@ -42,6 +43,7 @@ pub enum Command {
     Info,
     ReplConf,
     Psync,
+    Config,
     Wait,
 }
 
@@ -58,6 +60,7 @@ impl FromStr for Command {
             "REPLCONF" => Ok(Command::ReplConf),
             "PSYNC" => Ok(Command::Psync),
             "WAIT" => Ok(Command::Wait),
+            "CONFIG" => Ok(Command::Config),
             _ => Err(()),
         }
     }
@@ -94,6 +97,7 @@ impl Into<RedisType> for Command {
             Command::ReplConf => RedisType::BulkString("REPLCONF".to_string()),
             Command::Psync => RedisType::BulkString("PSYNC".to_string()),
             Command::Wait => RedisType::BulkString("WAIT".to_string()),
+            Command::Config => RedisType::BulkString("CONFIG".to_string()),
         }
     }
 }
@@ -120,5 +124,6 @@ pub async fn handle_command<'a>(
         Command::ReplConf => repl_conf::ReplConfHandler::handle(params).await,
         Command::Psync => psync::PsyncHandler::handle(params).await,
         Command::Wait => wait::WaitHandler::handle(params).await,
+        Command::Config => config::ConfigHandler::handle(params).await,
     }
 }

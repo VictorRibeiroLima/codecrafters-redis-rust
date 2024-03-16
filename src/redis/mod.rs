@@ -6,11 +6,13 @@ use tokio::{
 };
 
 use self::{
+    config::Config,
     replication::{role::Role, Replication},
     types::RedisType,
     value::Value,
 };
 
+pub mod config;
 pub mod replication;
 pub mod types;
 mod value;
@@ -18,17 +20,17 @@ mod value;
 #[derive(Debug, Default)]
 #[allow(dead_code)]
 pub struct Redis {
-    port: u16,
     memory: HashMap<String, Value>,
     keys: HashSet<String>,
     pub replication: Replication,
+    pub config: Config,
 }
 
 impl Redis {
-    pub fn new(port: u16, replica_of: Option<(String, u16)>) -> Self {
+    pub fn new(config: Config) -> Self {
         let redis = Self {
-            port,
-            replication: Replication::new(replica_of),
+            replication: Replication::new(config.replica_of.clone()),
+            config,
             ..Default::default()
         };
 
@@ -102,7 +104,7 @@ impl Redis {
             let command = RedisType::Array(vec![
                 RedisType::BulkString("REPLCONF".to_string()),
                 RedisType::BulkString("listening-port".to_string()),
-                RedisType::BulkString(self.port.to_string()),
+                RedisType::BulkString(self.config.port.to_string()),
             ]);
             let command = command.encode();
             stream

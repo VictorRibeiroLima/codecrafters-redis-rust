@@ -18,7 +18,7 @@ async fn main() -> Result<()> {
     let args = args::Args::parse()?;
     let addr = format!("{}:{}", HOST, args.port);
     let listener = TcpListener::bind(addr).await?;
-    let redis = redis::Redis::new(args.port, args.replica_of);
+    let redis = redis::Redis::new(args.into());
 
     let redis = Arc::new(RwLock::new(redis));
 
