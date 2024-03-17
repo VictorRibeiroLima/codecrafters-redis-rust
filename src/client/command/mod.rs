@@ -17,6 +17,7 @@ mod repl_conf;
 mod set;
 mod wait;
 mod x_add;
+mod x_range;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum CommandReturn {
@@ -53,6 +54,7 @@ pub enum Command {
     Wait,
     Keys,
     XAdd,
+    XRange,
 }
 
 impl FromStr for Command {
@@ -73,6 +75,7 @@ impl FromStr for Command {
             "DEL" => Ok(Command::Del),
             "TYPE" => Ok(Command::Type),
             "XADD" => Ok(Command::XAdd),
+            "XRANGE" => Ok(Command::XRange),
             _ => Err(()),
         }
     }
@@ -114,6 +117,7 @@ impl Into<RedisType> for Command {
             Command::Del => RedisType::BulkString("DEL".to_string()),
             Command::Type => RedisType::BulkString("TYPE".to_string()),
             Command::XAdd => RedisType::BulkString("XADD".to_string()),
+            Command::XRange => RedisType::BulkString("XRANGE".to_string()),
         }
     }
 }
@@ -145,5 +149,6 @@ pub async fn handle_command<'a>(
         Command::Del => del::DelHandler::handle(params).await,
         Command::Type => r_type::TypeHandler::handle(params).await,
         Command::XAdd => x_add::XAddHandler::handle(params).await,
+        Command::XRange => x_range::XRangeHandler::handle(params).await,
     }
 }

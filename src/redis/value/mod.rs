@@ -2,6 +2,8 @@ use std::time::SystemTime;
 
 use self::stream::StreamData;
 
+use super::types::RedisType;
+
 pub mod stream;
 
 #[allow(dead_code)]
@@ -46,6 +48,21 @@ impl Value {
         match self.expires_at {
             Some(expires_at) => SystemTime::now() > expires_at,
             None => false,
+        }
+    }
+}
+
+impl Into<RedisType> for Value {
+    fn into(self) -> RedisType {
+        match self.value {
+            ValueType::String(s) => RedisType::BulkString(s),
+            ValueType::Stream(s) => {
+                let mut result_vec = vec![];
+                for stream in &s {
+                    result_vec.push(stream.into());
+                }
+                RedisType::Array(result_vec)
+            }
         }
     }
 }

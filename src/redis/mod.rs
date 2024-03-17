@@ -71,6 +71,32 @@ impl Redis {
         }
     }
 
+    pub fn get_x_range(&self, key: &str, start: (u64, u64), end: (u64, u64)) -> RedisType {
+        let value = self.memory.get(key);
+        match value {
+            Some(value) => match &value.value {
+                ValueType::Stream(stream) => {
+                    let mut result_vec = vec![];
+                    let (first_start, second_start) = start;
+                    let (fist_end, second_end) = end;
+                    for data in stream {
+                        let (first_id, second_id) = data.id;
+                        let fist_in_range = first_id >= first_start && first_id <= fist_end;
+                        let second_in_range = second_id >= second_start && second_id <= second_end;
+                        if !fist_in_range || !second_in_range {
+                            continue;
+                        }
+
+                        result_vec.push(data.into());
+                    }
+                    RedisType::Array(result_vec)
+                }
+                _ => RedisType::SimpleError("ERR wrong type of value".to_string()),
+            },
+            None => RedisType::NullArray,
+        }
+    }
+
     pub fn get_mut(&mut self, key: &str) -> Option<&mut ValueType> {
         match self.memory.get_mut(key) {
             Some(value) => {

@@ -1,5 +1,7 @@
 use std::fmt::Display;
 
+use super::value::stream::StreamData;
+
 #[derive(Debug, PartialEq, Clone)]
 #[allow(dead_code)]
 pub enum RedisType {
@@ -355,6 +357,22 @@ impl Display for RedisType {
             }
             RedisType::Bytes(_) => write!(f, "bytes",),
         }
+    }
+}
+
+impl<'a> From<&'a StreamData> for RedisType {
+    fn from(value: &'a StreamData) -> Self {
+        let (first_id, second_id) = value.id;
+        let id = format!("{}-{}", first_id, second_id);
+        let mut vec = vec![RedisType::BulkString(id)];
+
+        let mut inner_vec = vec![];
+        for (field, value) in &value.fields {
+            inner_vec.push(RedisType::BulkString(field.clone()));
+            inner_vec.push(RedisType::BulkString(value.clone()));
+        }
+        vec.push(RedisType::Array(inner_vec));
+        RedisType::Array(vec)
     }
 }
 
