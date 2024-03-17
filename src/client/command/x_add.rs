@@ -111,6 +111,8 @@ impl Handler for XAddHandler {
                 if let Some(last) = last_value {
                     if last.0 == first_value {
                         second_value = last.1 + 1;
+                    } else if first_value > 0 {
+                        second_value = 0;
                     }
                 }
             } else {
