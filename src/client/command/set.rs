@@ -1,6 +1,6 @@
 use tokio::io::AsyncWriteExt;
 
-use crate::redis::types::RedisType;
+use crate::redis::{types::RedisType, value::ValueType};
 
 use super::{Command, CommandReturn};
 
@@ -87,6 +87,7 @@ impl super::Handler for SetHandler {
         }
         let command = RedisType::Array(command);
         let mut redis = redis.write().await;
+        let value = ValueType::String(value);
         redis.set(key, value, expires_in);
         if params.should_reply {
             let response = RedisType::SimpleString("OK".to_string());

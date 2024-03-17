@@ -15,13 +15,13 @@ use self::{
     config::Config,
     replication::{role::Role, Replication},
     types::RedisType,
-    value::Value,
+    value::{Value, ValueType},
 };
 
 pub mod config;
 pub mod replication;
 pub mod types;
-mod value;
+pub mod value;
 
 #[derive(Debug, Default)]
 #[allow(dead_code)]
@@ -52,12 +52,13 @@ impl Redis {
         redis
     }
 
-    pub fn set(&mut self, key: String, value: String, expiration: Option<u64>) {
+    pub fn set(&mut self, key: String, value: ValueType, expiration: Option<u64>) {
         let value = Value::new(value, expiration);
-        self.memory.insert(key, value);
+        self.memory.insert(key.clone(), value);
+        self.keys.insert(key);
     }
 
-    pub fn get(&self, key: &str) -> Option<&String> {
+    pub fn get(&self, key: &str) -> Option<&ValueType> {
         match self.memory.get(key) {
             Some(value) => {
                 if value.is_expired() {
@@ -68,6 +69,11 @@ impl Redis {
             }
             None => None,
         }
+    }
+
+    pub fn delete(&mut self, key: &str) -> bool {
+        self.memory.remove(key);
+        self.keys.remove(key)
     }
 
     pub fn expire_keys(&mut self) {
@@ -263,6 +269,7 @@ impl Redis {
             if value_type == 0 {
                 let key = encode_string(&mut file).unwrap();
                 let value = encode_string(&mut file).unwrap();
+                let value = ValueType::String(value);
                 new_memory.insert(key.clone(), Value::new_with_expiration(value, expiration));
                 new_keys.insert(key);
             }

@@ -1,6 +1,6 @@
 use tokio::io::AsyncWriteExt;
 
-use crate::redis::types::RedisType;
+use crate::redis::{types::RedisType, value::ValueType};
 
 use super::{CommandReturn, Handler};
 
@@ -25,7 +25,18 @@ impl Handler for GetHandler {
         };
         let redis = redis.read().await;
         let response = match redis.get(&key) {
-            Some(value) => RedisType::BulkString(value.to_string()),
+            Some(value) => match value {
+                ValueType::String(value) => RedisType::BulkString(value.to_string()),
+                _ => {
+                    let response = RedisType::SimpleError(
+                        "WRONGTYPE Operation against a key holding the wrong kind of value"
+                            .to_string(),
+                    );
+                    let bytes = response.encode();
+                    let _ = stream.write_all(&bytes).await;
+                    return CommandReturn::Error;
+                }
+            },
             None => RedisType::NullBulkString,
         };
         let bytes = response.encode();

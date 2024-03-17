@@ -1,13 +1,24 @@
 use std::time::SystemTime;
 
+use self::stream::StreamData;
+
+pub mod stream;
+
+#[allow(dead_code)]
+#[derive(Debug)]
+pub enum ValueType {
+    String(String),
+    Stream(Vec<StreamData>),
+}
+
 #[derive(Debug)]
 pub struct Value {
-    pub value: String,
+    pub value: ValueType,
     pub _created_at: SystemTime,
     pub expires_at: Option<SystemTime>,
 }
 impl Value {
-    pub fn new(value: String, expiration: Option<u64>) -> Self {
+    pub fn new(value: ValueType, expiration: Option<u64>) -> Self {
         let created_at = SystemTime::now();
         let expires_at = match expiration {
             Some(expiration) => {
@@ -23,7 +34,7 @@ impl Value {
         }
     }
 
-    pub fn new_with_expiration(value: String, expires_at: Option<SystemTime>) -> Self {
+    pub fn new_with_expiration(value: ValueType, expires_at: Option<SystemTime>) -> Self {
         Value {
             value,
             _created_at: SystemTime::now(),

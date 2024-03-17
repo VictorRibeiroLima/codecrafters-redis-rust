@@ -5,12 +5,14 @@ use tokio::{net::tcp::WriteHalf, sync::RwLock};
 use crate::redis::{types::RedisType, Redis};
 
 mod config;
+mod del;
 mod echo;
 mod get;
 mod info;
 mod keys;
 mod ping;
 mod psync;
+mod r_type;
 mod repl_conf;
 mod set;
 mod wait;
@@ -39,6 +41,8 @@ trait Handler {
 pub enum Command {
     Ping,
     Echo,
+    Del,
+    Type,
     Set,
     Get,
     Info,
@@ -64,6 +68,8 @@ impl FromStr for Command {
             "WAIT" => Ok(Command::Wait),
             "CONFIG" => Ok(Command::Config),
             "KEYS" => Ok(Command::Keys),
+            "DEL" => Ok(Command::Del),
+            "TYPE" => Ok(Command::Type),
             _ => Err(()),
         }
     }
@@ -102,6 +108,8 @@ impl Into<RedisType> for Command {
             Command::Wait => RedisType::BulkString("WAIT".to_string()),
             Command::Config => RedisType::BulkString("CONFIG".to_string()),
             Command::Keys => RedisType::BulkString("KEYS".to_string()),
+            Command::Del => RedisType::BulkString("DEL".to_string()),
+            Command::Type => RedisType::BulkString("TYPE".to_string()),
         }
     }
 }
@@ -130,5 +138,7 @@ pub async fn handle_command<'a>(
         Command::Wait => wait::WaitHandler::handle(params).await,
         Command::Config => config::ConfigHandler::handle(params).await,
         Command::Keys => keys::KeysHandler::handle(params).await,
+        Command::Del => del::DelHandler::handle(params).await,
+        Command::Type => r_type::TypeHandler::handle(params).await,
     }
 }
