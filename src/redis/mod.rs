@@ -71,6 +71,19 @@ impl Redis {
         }
     }
 
+    pub fn get_mut(&mut self, key: &str) -> Option<&mut ValueType> {
+        match self.memory.get_mut(key) {
+            Some(value) => {
+                if value.is_expired() {
+                    None
+                } else {
+                    Some(&mut value.value)
+                }
+            }
+            None => None,
+        }
+    }
+
     pub fn delete(&mut self, key: &str) -> bool {
         self.memory.remove(key);
         self.keys.remove(key)

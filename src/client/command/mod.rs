@@ -16,6 +16,7 @@ mod r_type;
 mod repl_conf;
 mod set;
 mod wait;
+mod x_add;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum CommandReturn {
@@ -51,6 +52,7 @@ pub enum Command {
     Config,
     Wait,
     Keys,
+    XAdd,
 }
 
 impl FromStr for Command {
@@ -70,6 +72,7 @@ impl FromStr for Command {
             "KEYS" => Ok(Command::Keys),
             "DEL" => Ok(Command::Del),
             "TYPE" => Ok(Command::Type),
+            "XADD" => Ok(Command::XAdd),
             _ => Err(()),
         }
     }
@@ -110,6 +113,7 @@ impl Into<RedisType> for Command {
             Command::Keys => RedisType::BulkString("KEYS".to_string()),
             Command::Del => RedisType::BulkString("DEL".to_string()),
             Command::Type => RedisType::BulkString("TYPE".to_string()),
+            Command::XAdd => RedisType::BulkString("XADD".to_string()),
         }
     }
 }
@@ -140,5 +144,6 @@ pub async fn handle_command<'a>(
         Command::Keys => keys::KeysHandler::handle(params).await,
         Command::Del => del::DelHandler::handle(params).await,
         Command::Type => r_type::TypeHandler::handle(params).await,
+        Command::XAdd => x_add::XAddHandler::handle(params).await,
     }
 }
