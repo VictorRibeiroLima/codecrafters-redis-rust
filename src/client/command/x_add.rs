@@ -110,6 +110,8 @@ impl Handler for XAddHandler {
             if second == "*" {
                 if let Some(last) = last_value {
                     second_value = last.1 + 1;
+                } else {
+                    second_value = 1;
                 }
             } else {
                 //ID parsing
