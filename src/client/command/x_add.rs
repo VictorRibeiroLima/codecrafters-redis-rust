@@ -104,6 +104,7 @@ impl Handler for XAddHandler {
                     return CommandReturn::Error;
                 }
             };
+            let second = &second[1..];
 
             //Partial ID generation
             if second == "*" {
@@ -111,7 +112,6 @@ impl Handler for XAddHandler {
                     second_value = last.1 + 1;
                 }
             } else {
-                let second = &second[1..];
                 //ID parsing
                 second_value = match second.parse::<u64>() {
                     Ok(s) => s,
