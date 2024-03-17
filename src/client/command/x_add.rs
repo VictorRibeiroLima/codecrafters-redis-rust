@@ -90,7 +90,7 @@ impl Handler for XAddHandler {
             };
 
             let (first, second) = id.split_at(slash_i);
-            let mut second_value = 0;
+            let mut second_value = 1;
             let first_value = match first.parse::<u64>() {
                 Ok(f) => f,
                 Err(_) => {
@@ -109,9 +109,9 @@ impl Handler for XAddHandler {
             //Partial ID generation
             if second == "*" {
                 if let Some(last) = last_value {
-                    second_value = last.1 + 1;
-                } else {
-                    second_value = 1;
+                    if last.0 == first_value {
+                        second_value = last.1 + 1;
+                    }
                 }
             } else {
                 //ID parsing
