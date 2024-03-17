@@ -130,6 +130,16 @@ impl Handler for XAddHandler {
 
             //ID validation
             if let Some(last) = last_value {
+                if first_value == 0 && second_value == 0 {
+                    if !should_reply {
+                        return CommandReturn::Error;
+                    }
+                    let e = RedisType::SimpleError(
+                        "ERR The ID specified in XADD must be greater than 0-0".to_string(),
+                    );
+                    let _ = writer.write_all(&e.encode()).await;
+                    return CommandReturn::Error;
+                }
                 if first_value < last.0 {
                     if !should_reply {
                         return CommandReturn::Error;
@@ -146,16 +156,6 @@ impl Handler for XAddHandler {
                     }
                     let e = RedisType::SimpleError(
                         "ERR The ID specified in XADD is equal or smaller than the target stream top item".to_string(),
-                    );
-                    let _ = writer.write_all(&e.encode()).await;
-                    return CommandReturn::Error;
-                }
-                if first_value == 0 && second_value == 0 {
-                    if !should_reply {
-                        return CommandReturn::Error;
-                    }
-                    let e = RedisType::SimpleError(
-                        "ERR The ID specified in XADD must be greater than 0-0".to_string(),
                     );
                     let _ = writer.write_all(&e.encode()).await;
                     return CommandReturn::Error;
