@@ -21,3 +21,53 @@ impl Handler for PingHandler {
         CommandReturn::Ok
     }
 }
+
+#[cfg(test)]
+mod test {
+    use std::sync::Arc;
+
+    use tokio::sync::RwLock;
+    use tokio_test::io::{Builder, Mock};
+
+    use crate::{
+        client::command::{ping::PingHandler, CommandReturn, Handler, HandlerParams},
+        redis::{types::RedisType, Redis},
+    };
+
+    #[tokio::test]
+    async fn test_ping() {
+        let response = RedisType::SimpleString("PONG".to_string());
+        let mut stream = Builder::new().write(&response.encode()).build();
+
+        let config = Default::default();
+        let redis: Redis<Mock> = Redis::new(config);
+        let redis = Arc::new(RwLock::new(redis));
+        let args = vec![];
+        let params = HandlerParams {
+            writer: &mut stream,
+            args,
+            redis: &redis,
+            should_reply: true,
+        };
+        let result = PingHandler::handle(params).await;
+        assert_eq!(result, CommandReturn::Ok);
+    }
+
+    #[tokio::test]
+    async fn test_ping_no_reply() {
+        let mut stream = Builder::new().build();
+
+        let config = Default::default();
+        let redis: Redis<Mock> = Redis::new(config);
+        let redis = Arc::new(RwLock::new(redis));
+        let args = vec![];
+        let params = HandlerParams {
+            writer: &mut stream,
+            args,
+            redis: &redis,
+            should_reply: false,
+        };
+        let result = PingHandler::handle(params).await;
+        assert_eq!(result, CommandReturn::Ok);
+    }
+}

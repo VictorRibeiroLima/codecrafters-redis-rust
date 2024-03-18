@@ -7,7 +7,7 @@ use super::types::RedisType;
 pub mod stream;
 
 #[allow(dead_code)]
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum ValueType {
     String(String),
     Stream(Vec<StreamData>),

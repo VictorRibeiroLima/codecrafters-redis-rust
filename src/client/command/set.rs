@@ -100,3 +100,215 @@ impl super::Handler for SetHandler {
         return CommandReturn::Ok;
     }
 }
+
+#[cfg(test)]
+mod test {
+    use std::sync::Arc;
+
+    use tokio::sync::RwLock;
+    use tokio_test::io::{Builder, Mock};
+
+    use crate::{
+        client::command::{set::SetHandler, Handler, HandlerParams},
+        redis::{config::Config, types::RedisType, value::ValueType, Redis},
+    };
+
+    #[tokio::test]
+    async fn test_set() {
+        let response = RedisType::SimpleString("OK".to_string());
+        let mock = Builder::new().write(&response.encode()).build();
+        let config = Config {
+            db_file_name: None,
+            dir: None,
+            port: 6379,
+            replica_of: None,
+        };
+
+        let redis: Redis<Mock> = Redis::new(config);
+        let redis = Arc::new(RwLock::new(redis));
+        let handler_params = HandlerParams {
+            args: vec!["key".to_string(), "value".to_string()],
+            redis: &redis,
+            should_reply: true,
+            writer: mock,
+        };
+        SetHandler::handle(handler_params).await;
+        let redis = redis.read().await;
+        let value = redis.get("key");
+        assert!(value.is_some());
+        let value = value.unwrap();
+        assert_eq!(value.expires_at, None);
+        assert_eq!(value.value, ValueType::String("value".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_set_without_reply() {
+        let mock = Builder::new().build();
+        let config = Config {
+            db_file_name: None,
+            dir: None,
+            port: 6379,
+            replica_of: None,
+        };
+
+        let redis: Redis<Mock> = Redis::new(config);
+        let redis = Arc::new(RwLock::new(redis));
+        let handler_params = HandlerParams {
+            args: vec!["key".to_string(), "value".to_string()],
+            redis: &redis,
+            should_reply: false,
+            writer: mock,
+        };
+        SetHandler::handle(handler_params).await;
+        let redis = redis.read().await;
+        let value = redis.get("key");
+        assert!(value.is_some());
+        let value = value.unwrap();
+        assert_eq!(value.expires_at, None);
+        assert_eq!(value.value, ValueType::String("value".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_set_expiration() {
+        let response = RedisType::SimpleString("OK".to_string());
+        let mock = Builder::new().write(&response.encode()).build();
+        let config = Config {
+            db_file_name: None,
+            dir: None,
+            port: 6379,
+            replica_of: None,
+        };
+
+        let redis: Redis<Mock> = Redis::new(config);
+        let redis = Arc::new(RwLock::new(redis));
+        let handler_params = HandlerParams {
+            args: vec![
+                "key".to_string(),
+                "value".to_string(),
+                "px".to_string(),
+                "1000".to_string(),
+            ],
+            redis: &redis,
+            should_reply: true,
+            writer: mock,
+        };
+        SetHandler::handle(handler_params).await;
+        let redis = redis.read().await;
+        let value = redis.get("key");
+        assert!(value.is_some());
+        let value = value.unwrap();
+        assert!(value.expires_at.is_some());
+        assert_eq!(value.value, ValueType::String("value".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_set_no_key() {
+        let response = RedisType::SimpleError("ERR missing key".to_string());
+        let mock = Builder::new().write(&response.encode()).build();
+        let config = Config {
+            db_file_name: None,
+            dir: None,
+            port: 6379,
+            replica_of: None,
+        };
+
+        let redis: Redis<Mock> = Redis::new(config);
+        let redis = Arc::new(RwLock::new(redis));
+        let handler_params = HandlerParams {
+            args: vec![],
+            redis: &redis,
+            should_reply: true,
+            writer: mock,
+        };
+        SetHandler::handle(handler_params).await;
+        let redis = redis.read().await;
+        let value = redis.get("key");
+        assert!(value.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_set_no_value() {
+        let response = RedisType::SimpleError("ERR missing value".to_string());
+        let mock = Builder::new().write(&response.encode()).build();
+        let config = Config {
+            db_file_name: None,
+            dir: None,
+            port: 6379,
+            replica_of: None,
+        };
+
+        let redis: Redis<Mock> = Redis::new(config);
+        let redis = Arc::new(RwLock::new(redis));
+        let handler_params = HandlerParams {
+            args: vec!["key".to_string()],
+            redis: &redis,
+            should_reply: true,
+            writer: mock,
+        };
+        SetHandler::handle(handler_params).await;
+        let redis = redis.read().await;
+        let value = redis.get("key");
+        assert!(value.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_invalid_expirations() {
+        let response = RedisType::SimpleError("ERR invalid expiration".to_string());
+        let response = response.encode();
+        let mock = Builder::new().write(&response).build();
+        let config = Config {
+            db_file_name: None,
+            dir: None,
+            port: 6379,
+            replica_of: None,
+        };
+
+        let redis: Redis<Mock> = Redis::new(config);
+        let redis = Arc::new(RwLock::new(redis));
+
+        //Invalid expiration command
+        let handler_params = HandlerParams {
+            args: vec![
+                "key".to_string(),
+                "value".to_string(),
+                "invalid".to_string(),
+            ],
+            redis: &redis,
+            should_reply: true,
+            writer: mock,
+        };
+        SetHandler::handle(handler_params).await;
+        let redis_w = redis.read().await;
+        let value = redis_w.get("key");
+        assert!(value.is_none());
+
+        // Test expiration value missing
+        let mock = Builder::new().write(&response).build();
+        let handler_params = HandlerParams {
+            args: vec!["key".to_string(), "value".to_string(), "px".to_string()],
+            redis: &redis,
+            should_reply: true,
+            writer: mock,
+        };
+        SetHandler::handle(handler_params).await;
+        let value = redis_w.get("key");
+        assert!(value.is_none());
+
+        // Test invalid expiration value
+        let mock = Builder::new().write(&response).build();
+        let handler_params = HandlerParams {
+            args: vec![
+                "key".to_string(),
+                "value".to_string(),
+                "px".to_string(),
+                "invalid".to_string(),
+            ],
+            redis: &redis,
+            should_reply: true,
+            writer: mock,
+        };
+        SetHandler::handle(handler_params).await;
+        let value = redis_w.get("key");
+        assert!(value.is_none());
+    }
+}

@@ -29,7 +29,7 @@ impl super::Handler for TypeHandler {
 
         let redis = redis.read().await;
 
-        let value = match redis.get(&key) {
+        let value = match redis.get_value(&key) {
             Some(value) => value,
             None => {
                 if !params.should_reply {

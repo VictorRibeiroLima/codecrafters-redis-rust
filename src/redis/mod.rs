@@ -58,7 +58,7 @@ impl<S: RWStream> Redis<S> {
         self.keys.insert(key);
     }
 
-    pub fn get(&self, key: &str) -> Option<&ValueType> {
+    pub fn get_value(&self, key: &str) -> Option<&ValueType> {
         match self.memory.get(key) {
             Some(value) => {
                 if value.is_expired() {
@@ -69,6 +69,12 @@ impl<S: RWStream> Redis<S> {
             }
             None => None,
         }
+    }
+
+    #[allow(dead_code)]
+    pub fn get(&self, key: &str) -> Option<&Value> {
+        let value = self.memory.get(key);
+        value
     }
 
     pub fn get_x_range(&self, key: &str, start: (u64, u64), end: (u64, u64)) -> RedisType {

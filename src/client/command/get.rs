@@ -26,7 +26,7 @@ impl Handler for GetHandler {
             }
         };
         let redis = redis.read().await;
-        let response = match redis.get(&key) {
+        let response = match redis.get_value(&key) {
             Some(value) => match value {
                 ValueType::String(value) => RedisType::BulkString(value.to_string()),
                 _ => {
