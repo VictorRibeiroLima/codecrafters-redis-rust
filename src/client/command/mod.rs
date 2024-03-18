@@ -1,8 +1,8 @@
 use std::{str::FromStr, sync::Arc};
 
-use tokio::{net::tcp::WriteHalf, sync::RwLock};
+use tokio::{io::AsyncWrite, sync::RwLock};
 
-use crate::redis::{types::RedisType, Redis};
+use crate::redis::{replication::RWStream, types::RedisType, Redis};
 
 mod config;
 mod del;
@@ -28,15 +28,17 @@ pub enum CommandReturn {
     HandShakeCompleted,
 }
 
-struct HandlerParams<'a> {
+struct HandlerParams<'a, W: AsyncWrite + Unpin, S: RWStream> {
     args: Vec<String>,
-    redis: &'a Arc<RwLock<Redis>>,
-    writer: WriteHalf<'a>,
+    redis: &'a Arc<RwLock<Redis<S>>>,
+    writer: W,
     should_reply: bool,
 }
 
 trait Handler {
-    async fn handle<'a>(params: HandlerParams<'a>) -> CommandReturn;
+    async fn handle<'a, W: AsyncWrite + Unpin, S: RWStream>(
+        params: HandlerParams<'a, W, S>,
+    ) -> CommandReturn;
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -122,11 +124,11 @@ impl Into<RedisType> for Command {
     }
 }
 
-pub async fn handle_command<'a>(
+pub async fn handle_command<'a, W: AsyncWrite + Unpin, S: RWStream>(
     command: Command,
     args: Vec<String>,
-    redis: &'a Arc<RwLock<Redis>>,
-    writer: WriteHalf<'a>,
+    redis: &'a Arc<RwLock<Redis<S>>>,
+    writer: W,
     should_reply: bool,
 ) -> CommandReturn {
     let params = HandlerParams {

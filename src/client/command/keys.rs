@@ -1,11 +1,15 @@
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncWrite, AsyncWriteExt};
+
+use crate::redis::replication::RWStream;
 
 use super::Handler;
 
 pub struct KeysHandler;
 
 impl Handler for KeysHandler {
-    async fn handle<'a>(params: super::HandlerParams<'a>) -> super::CommandReturn {
+    async fn handle<'a, W: AsyncWrite + Unpin, S: RWStream>(
+        params: super::HandlerParams<'a, W, S>,
+    ) -> super::CommandReturn {
         if !params.should_reply {
             return super::CommandReturn::Ok;
         }

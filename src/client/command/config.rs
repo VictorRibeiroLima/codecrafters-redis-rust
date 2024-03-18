@@ -1,6 +1,8 @@
 use std::str::FromStr;
 
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncWrite, AsyncWriteExt};
+
+use crate::redis::replication::RWStream;
 
 use super::{CommandReturn, Handler, HandlerParams};
 
@@ -28,7 +30,9 @@ impl FromStr for SubCommand {
 pub struct ConfigHandler;
 
 impl Handler for ConfigHandler {
-    async fn handle<'a>(mut params: HandlerParams<'a>) -> CommandReturn {
+    async fn handle<'a, W: AsyncWrite + Unpin, S: RWStream>(
+        mut params: HandlerParams<'a, W, S>,
+    ) -> CommandReturn {
         let args = &params.args;
         let writer = &mut params.writer;
         let should_reply = params.should_reply;
@@ -63,7 +67,9 @@ impl Handler for ConfigHandler {
     }
 }
 
-async fn handle_get_command(params: HandlerParams<'_>) -> CommandReturn {
+async fn handle_get_command<W: AsyncWrite + Unpin, S: RWStream>(
+    params: HandlerParams<'_, W, S>,
+) -> CommandReturn {
     let args = &params.args;
     let mut writer = params.writer;
     let redis = params.redis;

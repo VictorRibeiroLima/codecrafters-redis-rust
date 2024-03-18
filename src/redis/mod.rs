@@ -13,7 +13,7 @@ use bytes::{Buf, Bytes};
 
 use self::{
     config::Config,
-    replication::{role::Role, Replication},
+    replication::{role::Role, RWStream, Replication},
     types::RedisType,
     value::{Value, ValueType},
 };
@@ -23,20 +23,20 @@ pub mod replication;
 pub mod types;
 pub mod value;
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 #[allow(dead_code)]
-pub struct Redis {
+pub struct Redis<S: RWStream> {
     magic_number: [u8; 5],
     version: [u8; 4],
     table_size: u32,
     expiry_size: u32,
     memory: HashMap<String, Value>,
     keys: HashSet<String>,
-    pub replication: Replication,
+    pub replication: Replication<S>,
     pub config: Config,
 }
 
-impl Redis {
+impl<S: RWStream> Redis<S> {
     pub fn new(config: Config) -> Self {
         let mut redis = Self {
             replication: Replication::new(config.replica_of.clone()),
@@ -337,9 +337,25 @@ fn encode_string(file: &mut Bytes) -> Result<String, string::FromUtf8Error> {
     String::from_utf8(i)
 }
 
+impl<S: RWStream> Default for Redis<S> {
+    fn default() -> Self {
+        Self {
+            magic_number: [0; 5],
+            version: [0; 4],
+            table_size: 0,
+            expiry_size: 0,
+            memory: HashMap::new(),
+            keys: HashSet::new(),
+            replication: Replication::new(None),
+            config: Config::default(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tokio_test::io::Mock;
 
     #[test]
     fn test_create_from_file() {
@@ -350,7 +366,7 @@ mod tests {
             replica_of: None,
         };
 
-        let redis = Redis::new(config);
+        let redis: Redis<Mock> = Redis::new(config);
         let keys = redis.keys.len();
         assert_eq!(keys, 4);
     }

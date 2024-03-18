@@ -1,15 +1,20 @@
 use std::sync::Arc;
 
-use tokio::{io::AsyncWriteExt, sync::RwLock};
+use tokio::{
+    io::{AsyncWrite, AsyncWriteExt},
+    sync::RwLock,
+};
 
-use crate::redis::{types::RedisType, Redis};
+use crate::redis::{replication::RWStream, types::RedisType, Redis};
 
 use super::{CommandReturn, Handler};
 
 pub struct PsyncHandler;
 
 impl Handler for PsyncHandler {
-    async fn handle<'a>(params: super::HandlerParams<'a>) -> CommandReturn {
+    async fn handle<'a, W: AsyncWrite + Unpin, S: RWStream>(
+        params: super::HandlerParams<'a, W, S>,
+    ) -> CommandReturn {
         let mut writer = params.writer;
         let args = params.args;
         let redis = params.redis;
@@ -27,7 +32,7 @@ impl Handler for PsyncHandler {
         }
     }
 }
-async fn handle_psync(args: Vec<String>, redis: &Arc<RwLock<Redis>>) -> RedisType {
+async fn handle_psync<S: RWStream>(args: Vec<String>, redis: &Arc<RwLock<Redis<S>>>) -> RedisType {
     let _ = match args.get(0) {
         Some(id) => id,
         None => return RedisType::SimpleError("ERR invalid id".to_string()),

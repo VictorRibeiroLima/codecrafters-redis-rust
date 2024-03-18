@@ -1,13 +1,15 @@
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncWrite, AsyncWriteExt};
 
-use crate::redis::types::RedisType;
+use crate::redis::{replication::RWStream, types::RedisType};
 
 use super::{CommandReturn, Handler};
 
 pub struct PingHandler;
 
 impl Handler for PingHandler {
-    async fn handle<'a>(params: super::HandlerParams<'a>) -> CommandReturn {
+    async fn handle<'a, W: AsyncWrite + Unpin, S: RWStream>(
+        params: super::HandlerParams<'a, W, S>,
+    ) -> CommandReturn {
         if !params.should_reply {
             return CommandReturn::Ok;
         }

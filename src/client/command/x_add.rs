@@ -3,9 +3,10 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 use crate::redis::{
+    replication::RWStream,
     types::RedisType,
     value::{stream::StreamData, ValueType},
 };
@@ -15,7 +16,9 @@ use super::{Command, CommandReturn, Handler, HandlerParams};
 pub struct XAddHandler;
 
 impl Handler for XAddHandler {
-    async fn handle<'a>(params: HandlerParams<'a>) -> CommandReturn {
+    async fn handle<'a, W: AsyncWrite + Unpin, S: RWStream>(
+        params: HandlerParams<'a, W, S>,
+    ) -> CommandReturn {
         let mut writer = params.writer;
         let should_reply = params.should_reply;
         let redis = params.redis;

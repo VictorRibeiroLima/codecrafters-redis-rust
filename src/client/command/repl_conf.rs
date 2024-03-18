@@ -1,13 +1,15 @@
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncWrite, AsyncWriteExt};
 
-use crate::redis::types::RedisType;
+use crate::redis::{replication::RWStream, types::RedisType};
 
 use super::{CommandReturn, Handler};
 
 pub struct ReplConfHandler;
 
 impl Handler for ReplConfHandler {
-    async fn handle<'a>(params: super::HandlerParams<'a>) -> CommandReturn {
+    async fn handle<'a, W: AsyncWrite + Unpin, S: RWStream>(
+        params: super::HandlerParams<'a, W, S>,
+    ) -> CommandReturn {
         let mut writer = params.writer;
         let args = params.args;
         let redis = params.redis;

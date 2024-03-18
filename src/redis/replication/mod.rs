@@ -2,7 +2,6 @@ use std::{fmt::Display, time::Duration};
 
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt, BufReader},
-    net::TcpStream,
     sync::Mutex,
     time::timeout,
 };
@@ -15,15 +14,16 @@ use super::types::RedisType;
 
 pub mod role;
 
+pub trait RWStream: AsyncWriteExt + AsyncReadExt + Unpin {}
 #[derive(Debug)]
-pub struct Replica {
+pub struct Replica<S: RWStream> {
     pub host: String,
     pub port: u16,
-    pub stream: Mutex<BufReader<TcpStream>>,
+    pub stream: Mutex<BufReader<S>>,
 }
 
-#[derive(Debug, Default)]
-pub struct Replication {
+#[derive(Debug)]
+pub struct Replication<S: RWStream> {
     pub replica_of: Option<(String, u16)>,
     pub role: Role,
     pub connected_slaves: usize,
@@ -34,11 +34,11 @@ pub struct Replication {
     pub repl_backlog_size: i32,
     pub repl_backlog_first_byte_offset: i32,
     pub repl_backlog_histlen: i32,
-    pub replicas: Vec<Replica>,
+    pub replicas: Vec<Replica<S>>,
     pub slave_read_repl_offset: u64,
 }
 
-impl Replication {
+impl<S: RWStream> Replication<S> {
     pub fn new(replica_of: Option<(String, u16)>) -> Self {
         let role = match replica_of {
             Some(_) => Role::Slave,
@@ -53,7 +53,7 @@ impl Replication {
         }
     }
 
-    pub fn add_replica(&mut self, replica: Replica) {
+    pub fn add_replica(&mut self, replica: Replica<S>) {
         self.connected_slaves += 1;
         self.replicas.push(replica);
     }
@@ -196,7 +196,7 @@ impl Replication {
     }
 }
 
-impl Display for Replication {
+impl<S: RWStream> Display for Replication<S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         //return write!(f, "*2\r\n$5\r\nhello\r\n$5\r\nworld\r\n");
         let mut bulk_string = String::new();
@@ -241,5 +241,24 @@ impl Display for Replication {
         bulk_string.push_str(&repl_backlog_histlen);
 
         write!(f, "{}", bulk_string)
+    }
+}
+
+impl<S: RWStream> Default for Replication<S> {
+    fn default() -> Self {
+        Self {
+            replica_of: Default::default(),
+            role: Default::default(),
+            connected_slaves: Default::default(),
+            master_replid: Default::default(),
+            master_repl_offset: Default::default(),
+            second_repl_offset: Default::default(),
+            repl_backlog_active: Default::default(),
+            repl_backlog_size: Default::default(),
+            repl_backlog_first_byte_offset: Default::default(),
+            repl_backlog_histlen: Default::default(),
+            replicas: Default::default(),
+            slave_read_repl_offset: Default::default(),
+        }
     }
 }

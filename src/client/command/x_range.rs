@@ -1,13 +1,15 @@
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncWrite, AsyncWriteExt};
 
-use crate::redis::types::RedisType;
+use crate::redis::{replication::RWStream, types::RedisType};
 
 use super::{CommandReturn, Handler, HandlerParams};
 
 pub struct XRangeHandler;
 
 impl Handler for XRangeHandler {
-    async fn handle<'a>(params: HandlerParams<'a>) -> CommandReturn {
+    async fn handle<'a, W: AsyncWrite + Unpin, S: RWStream>(
+        params: HandlerParams<'a, W, S>,
+    ) -> CommandReturn {
         let mut writer = params.writer;
 
         let key = match params.args.get(0).cloned() {

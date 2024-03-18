@@ -7,16 +7,22 @@ use tokio::{
     sync::{Mutex, RwLock},
 };
 
-use crate::redis::{replication::Replica, types::RedisType, Redis};
+use crate::redis::{
+    replication::{RWStream, Replica},
+    types::RedisType,
+    Redis,
+};
 
 use self::command::{handle_command, Command, CommandReturn};
 
 mod command;
 
+impl RWStream for TcpStream {}
+
 pub struct Client {
     pub stream: BufReader<TcpStream>,
     pub should_reply: bool,
-    pub redis: Arc<RwLock<Redis>>,
+    pub redis: Arc<RwLock<Redis<TcpStream>>>,
     pub addr: Option<SocketAddr>,
     pub hand_shake_port: Option<u16>,
 }

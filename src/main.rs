@@ -4,7 +4,10 @@ use std::sync::Arc;
 use anyhow::Result;
 
 use client::Client;
-use tokio::{net::TcpListener, sync::RwLock};
+use tokio::{
+    net::{TcpListener, TcpStream},
+    sync::RwLock,
+};
 
 mod args;
 mod client;
@@ -66,10 +69,19 @@ async fn main() -> Result<()> {
     }
 }
 
-async fn start_expiration_thread(redis: Arc<RwLock<redis::Redis>>) {
+async fn start_expiration_thread(redis: Arc<RwLock<redis::Redis<TcpStream>>>) {
     loop {
         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
         let mut redis = redis.write().await;
         redis.expire_keys();
     }
+}
+
+#[cfg(test)]
+mod test {
+    use tokio_test::io::Mock;
+
+    use crate::redis::replication::RWStream;
+
+    impl RWStream for Mock {}
 }
