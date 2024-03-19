@@ -1,9 +1,43 @@
-use tokio::io::AsyncWrite;
+use std::sync::Arc;
 
-use crate::redis::{replication::RWStream, types::RedisType};
+use tokio::{io::AsyncWrite, sync::RwLock};
+
+use crate::redis::{replication::RWStream, types::RedisType, value::ValueType, Redis};
 use tokio::io::AsyncWriteExt;
 
 use super::{CommandReturn, Handler, HandlerParams};
+
+enum IdType {
+    Id(u64, u64),
+    Last,
+}
+
+impl IdType {
+    async fn to_id<S: RWStream>(self, key: &str, redis: &Arc<RwLock<Redis<S>>>) -> (u64, u64) {
+        match self {
+            IdType::Id(first, second) => (first, second),
+            IdType::Last => {
+                let redis_w = redis.read().await;
+                let response = redis_w.get(key);
+                let value = match response {
+                    Some(value) => value,
+                    None => return (0, 0),
+                };
+                let value = match &value.value {
+                    ValueType::Stream(value) => value,
+                    _ => return (0, 0),
+                };
+                let last = value.last();
+                if last.is_none() {
+                    return (0, 0);
+                }
+                let last = last.unwrap();
+                let id = last.id;
+                (id.0, id.1)
+            }
+        }
+    }
+}
 
 pub struct XReadHandler {}
 
@@ -86,7 +120,7 @@ impl Handler for XReadHandler {
 
         //Map Streams
         while let Some(stream) = iter.next() {
-            if stream.contains("-") || stream.parse::<u64>().is_ok() {
+            if stream.contains("-") || stream.parse::<u64>().is_ok() || stream == "$" {
                 let id = str_to_id(stream);
                 if id.is_err() {
                     if !should_reply {
@@ -142,6 +176,13 @@ impl Handler for XReadHandler {
             return CommandReturn::Error;
         }
 
+        let key_to_ids: Vec<(&&String, IdType)> = streams.iter().zip(ids.into_iter()).collect();
+        let mut ids = vec![];
+        for (key, id) in key_to_ids {
+            let id = id.to_id(key, &redis).await;
+            ids.push(id);
+        }
+
         let redis_w = redis.read().await;
         let mut response = redis_w.get_x_read(&streams, &ids, count);
         drop(redis_w);
@@ -172,14 +213,18 @@ impl Handler for XReadHandler {
     }
 }
 
-fn str_to_id(s: &str) -> Result<(u64, u64), ()> {
+fn str_to_id(s: &str) -> Result<IdType, ()> {
     if s.contains("-") {
         let mut iter = s.split("-");
         let first = iter.next().ok_or(())?.parse().map_err(|_| ())?;
         let second = iter.next().ok_or(())?.parse().map_err(|_| ())?;
-        Ok((first, second))
+        let id = IdType::Id(first, second);
+        Ok(id)
+    } else if s == "$" {
+        Ok(IdType::Last)
     } else {
         let first = s.parse().map_err(|_| ())?;
-        Ok((first, 0))
+        let id = IdType::Id(first, 0);
+        Ok(id)
     }
 }
