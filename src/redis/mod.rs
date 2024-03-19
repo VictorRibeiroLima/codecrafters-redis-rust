@@ -78,11 +78,11 @@ impl<S: RWStream> Redis<S> {
     }
 
     pub fn get_x_range(&self, key: &str, start: (u64, u64), end: (u64, u64)) -> RedisType {
+        let mut result_vec = vec![];
         let value = self.memory.get(key);
         match value {
             Some(value) => match &value.value {
                 ValueType::Stream(stream) => {
-                    let mut result_vec = vec![];
                     let (first_start, second_start) = start;
                     let (fist_end, second_end) = end;
                     for data in stream {
@@ -100,6 +100,50 @@ impl<S: RWStream> Redis<S> {
                 _ => RedisType::SimpleError("ERR wrong type of value".to_string()),
             },
             None => RedisType::NullArray,
+        }
+    }
+
+    pub fn get_x_read(
+        &self,
+        keys: Vec<&String>,
+        ids: Vec<(u64, u64)>,
+        count: Option<usize>,
+    ) -> RedisType {
+        let mut result_vec = vec![];
+        let k_ids: Vec<(&String, (u64, u64))> = keys.into_iter().zip(ids.into_iter()).collect();
+        let count = count.unwrap_or(usize::MAX);
+        for (key, id) in k_ids {
+            let value = self.memory.get(key);
+            let mut this_key_count = 0;
+            match value {
+                Some(value) => match &value.value {
+                    ValueType::Stream(stream) => {
+                        let mut inner_vec = vec![];
+                        inner_vec.push(RedisType::BulkString(key.clone()));
+                        let mut inner_inner_vec = vec![];
+                        let (first_id, second_id) = id;
+                        for data in stream {
+                            let (first, second) = data.id;
+                            if first >= first_id && second > second_id {
+                                this_key_count += 1;
+                                inner_inner_vec.push(data.into());
+                            }
+                            if this_key_count >= count {
+                                break;
+                            }
+                        }
+                        inner_vec.push(RedisType::Array(inner_inner_vec));
+                        result_vec.push(RedisType::Array(inner_vec));
+                    }
+                    _ => {}
+                },
+                None => {}
+            }
+        }
+        if result_vec.is_empty() {
+            RedisType::NullArray
+        } else {
+            RedisType::Array(result_vec)
         }
     }
 

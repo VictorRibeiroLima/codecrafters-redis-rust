@@ -18,6 +18,7 @@ mod set;
 mod wait;
 mod x_add;
 mod x_range;
+mod x_read;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum CommandReturn {
@@ -57,6 +58,7 @@ pub enum Command {
     Keys,
     XAdd,
     XRange,
+    XRead,
 }
 
 impl FromStr for Command {
@@ -78,6 +80,7 @@ impl FromStr for Command {
             "TYPE" => Ok(Command::Type),
             "XADD" => Ok(Command::XAdd),
             "XRANGE" => Ok(Command::XRange),
+            "XREAD" => Ok(Command::XRead),
             _ => Err(()),
         }
     }
@@ -120,6 +123,7 @@ impl Into<RedisType> for Command {
             Command::Type => RedisType::BulkString("TYPE".to_string()),
             Command::XAdd => RedisType::BulkString("XADD".to_string()),
             Command::XRange => RedisType::BulkString("XRANGE".to_string()),
+            Command::XRead => RedisType::BulkString("XREAD".to_string()),
         }
     }
 }
@@ -152,5 +156,6 @@ pub async fn handle_command<'a, W: AsyncWrite + Unpin, S: RWStream>(
         Command::Type => r_type::TypeHandler::handle(params).await,
         Command::XAdd => x_add::XAddHandler::handle(params).await,
         Command::XRange => x_range::XRangeHandler::handle(params).await,
+        Command::XRead => x_read::XReadHandler::handle(params).await,
     }
 }
