@@ -14,9 +14,10 @@ impl Handler for XReadHandler {
         let args = params.args;
         let mut writer = params.writer;
         let should_reply = params.should_reply;
+        let redis = params.redis;
         let mut iter = args.iter();
         let mut count = None;
-        let mut _blocks = None;
+        let mut blocks = None;
         let mut streams = Vec::new();
         let mut ids = Vec::new();
 
@@ -63,7 +64,7 @@ impl Handler for XReadHandler {
                     return CommandReturn::Error;
                 }
                 let n_blocks = n_blocks.unwrap();
-                let n_blocks = match n_blocks.parse::<usize>() {
+                let n_blocks = match n_blocks.parse::<u64>() {
                     Ok(n) => n,
                     Err(_) => {
                         if !should_reply {
@@ -76,7 +77,7 @@ impl Handler for XReadHandler {
                         return CommandReturn::Error;
                     }
                 };
-                _blocks = Some(n_blocks);
+                blocks = Some(n_blocks);
             }
             if arg.to_uppercase() == "STREAMS" {
                 break;
@@ -141,8 +142,29 @@ impl Handler for XReadHandler {
             return CommandReturn::Error;
         }
 
-        let redis = params.redis.read().await;
-        let response = redis.get_x_read(streams, ids, count);
+        let redis_w = redis.read().await;
+        let mut response = redis_w.get_x_read(&streams, &ids, count);
+        drop(redis_w);
+        if response == RedisType::NullArray {
+            if let Some(blocks) = blocks {
+                //start blocking
+                let blocks = if blocks == 0 { u64::MAX } else { blocks };
+                let mut now = std::time::SystemTime::now();
+                let time_out = now
+                    .checked_add(std::time::Duration::from_millis(blocks))
+                    .unwrap();
+                while now < time_out {
+                    let redis_w = redis.read().await;
+                    response = redis_w.get_x_read(&streams, &ids, count);
+                    if response != RedisType::NullArray {
+                        break;
+                    }
+                    //Careful with deadlocks
+                    drop(redis_w);
+                    now = std::time::SystemTime::now();
+                }
+            }
+        }
         if should_reply {
             let _ = writer.write_all(&response.encode()).await;
         }

@@ -105,26 +105,26 @@ impl<S: RWStream> Redis<S> {
 
     pub fn get_x_read(
         &self,
-        keys: Vec<&String>,
-        ids: Vec<(u64, u64)>,
+        keys: &Vec<&String>,
+        ids: &Vec<(u64, u64)>,
         count: Option<usize>,
     ) -> RedisType {
         let mut result_vec = vec![];
-        let k_ids: Vec<(&String, (u64, u64))> = keys.into_iter().zip(ids.into_iter()).collect();
+        let k_ids: Vec<(&&String, &(u64, u64))> = keys.iter().zip(ids.iter()).collect();
         let count = count.unwrap_or(usize::MAX);
         for (key, id) in k_ids {
-            let value = self.memory.get(key);
+            let value = self.memory.get(*key);
             let mut this_key_count = 0;
             match value {
                 Some(value) => match &value.value {
                     ValueType::Stream(stream) => {
                         let mut inner_vec = vec![];
-                        inner_vec.push(RedisType::BulkString(key.clone()));
+                        inner_vec.push(RedisType::BulkString((*key).clone()));
                         let mut inner_inner_vec = vec![];
                         let (first_id, second_id) = id;
                         for data in stream {
                             let (first, second) = data.id;
-                            if first >= first_id && second > second_id {
+                            if first >= *first_id && second > *second_id {
                                 this_key_count += 1;
                                 inner_inner_vec.push(data.into());
                             }
@@ -132,8 +132,10 @@ impl<S: RWStream> Redis<S> {
                                 break;
                             }
                         }
-                        inner_vec.push(RedisType::Array(inner_inner_vec));
-                        result_vec.push(RedisType::Array(inner_vec));
+                        if !inner_inner_vec.is_empty() {
+                            inner_vec.push(RedisType::Array(inner_inner_vec));
+                            result_vec.push(RedisType::Array(inner_vec));
+                        }
                     }
                     _ => {}
                 },
