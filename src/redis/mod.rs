@@ -28,8 +28,8 @@ pub mod value;
 pub struct Redis<S: RWStream> {
     magic_number: [u8; 5],
     version: [u8; 4],
-    table_size: u32,
-    expiry_size: u32,
+    table_size: u64,
+    expiry_size: u64,
     memory: HashMap<String, Value>,
     keys: HashSet<String>,
     pub replication: Replication<S>,
@@ -308,8 +308,8 @@ impl<S: RWStream> Redis<S> {
 
         let mut _oxfbi = 0;
         for i in 9..file_len {
-            if file[i] == 0xFB {
-                _oxfbi = i;
+            if file[i] == 0xFE && file[i + 1] == 0x00 && file[i + 2] == 0xFB {
+                _oxfbi = i + 2;
                 break;
             }
         }
@@ -363,6 +363,10 @@ impl<S: RWStream> Redis<S> {
                 let value = ValueType::String(value);
                 new_memory.insert(key.clone(), Value::new_with_expiration(value, expiration));
                 new_keys.insert(key);
+            } else if value_type == 15 {
+                let key = encode_string(&mut file).unwrap();
+                println!("key:{}", key);
+                //TODO:Handle stream
             }
         }
 
@@ -371,20 +375,44 @@ impl<S: RWStream> Redis<S> {
     }
 }
 
+fn read_length(file: &mut Bytes) -> u64 {
+    let length = file.get_u8();
+    encode_length(file, length)
+}
+
 //See:https://rdb.fnordig.de/file_format.html#length-encoded
-fn encode_length(file: &mut Bytes, length: u8) -> u32 {
-    match length {
-        0b00000000..=0b00111111 => u32::from_be_bytes([0x00, 0x00, 0x00, length]),
-        0b01000000..=0b01111111 => u32::from_be_bytes([0x00, 0x00, file.get_u8(), length]),
-        0b10000000..=0b10111111 => file.get_u32(),
-        0b11000000..=0b11111111 => 00,
+fn encode_length(file: &mut Bytes, length: u8) -> u64 {
+    let mut bytes = vec![length];
+    let enc_type = (bytes[0] & 0xC0) >> 6;
+    match enc_type {
+        0..=3 => {
+            return bytes[0] as u64 & 0x3F;
+        }
+        14 => {
+            bytes.push(file.get_u8());
+            let init_b = bytes[0] as u64 & 0x3F;
+            let init_b = init_b << 8;
+            let second_b = bytes[1] as u64;
+            return init_b | second_b;
+        }
+        0x80 => {
+            let bytes = file.split_to(4).to_vec();
+            return u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) as u64;
+        }
+        0x81 => {
+            println!("0x81:{}", 0x81);
+            let bytes = file.split_to(8).to_vec();
+            return u64::from_be_bytes([
+                bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
+            ]);
+        }
+        _ => panic!("Invalid encoding type"),
     }
 }
 
 //See:https://rdb.fnordig.de/file_format.html#string-encoding
 fn encode_string(file: &mut Bytes) -> Result<String, string::FromUtf8Error> {
-    let length = file.get_u8();
-    let key_length = encode_length(file, length);
+    let key_length = read_length(file);
     let i = file.split_to(key_length.try_into().unwrap()).to_vec();
     String::from_utf8(i)
 }
@@ -411,6 +439,18 @@ mod tests {
 
     #[test]
     fn test_create_from_file() {
+        let file = vec![
+            82, 69, 68, 73, 83, 48, 48, 48, 51, 250, 9, 114, 101, 100, 105, 115, 45, 118, 101, 114,
+            5, 55, 46, 50, 46, 48, 250, 10, 114, 101, 100, 105, 115, 45, 98, 105, 116, 115, 192,
+            64, 254, 0, 251, 3, 3, 252, 0, 156, 239, 18, 126, 1, 0, 0, 0, 9, 98, 108, 117, 101, 98,
+            101, 114, 114, 121, 4, 112, 101, 97, 114, 252, 0, 12, 40, 138, 199, 1, 0, 0, 0, 4, 112,
+            101, 97, 114, 9, 112, 105, 110, 101, 97, 112, 112, 108, 101, 252, 0, 12, 40, 138, 199,
+            1, 0, 0, 0, 5, 103, 114, 97, 112, 101, 9, 98, 108, 117, 101, 98, 101, 114, 114, 121,
+            255, 76, 205, 60, 203, 238, 60, 229, 217, 10,
+        ];
+        //Write file to disk
+        let path = "dump.rdb";
+        std::fs::write(path, file).expect("Failed to write file");
         let config = Config {
             db_file_name: Some("dump.rdb".to_string()),
             dir: Some(".".to_string()),
@@ -420,6 +460,6 @@ mod tests {
 
         let redis: Redis<Mock> = Redis::new(config);
         let keys = redis.keys.len();
-        assert_eq!(keys, 4);
+        assert_eq!(keys, 3);
     }
 }
