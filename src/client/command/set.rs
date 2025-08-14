@@ -14,8 +14,6 @@ impl super::Handler for SetHandler {
         let args = params.args;
         let redis = params.redis;
 
-        let redis = redis.clone();
-
         let key = match args.get(0) {
             Some(key) => key.to_string(),
             None => {

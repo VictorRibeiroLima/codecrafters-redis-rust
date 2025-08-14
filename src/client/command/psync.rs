@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use tokio::{
     io::{AsyncWrite, AsyncWriteExt},
     sync::RwLock,
@@ -32,7 +30,7 @@ impl Handler for PsyncHandler {
         }
     }
 }
-async fn handle_psync<S: RWStream>(args: Vec<String>, redis: &Arc<RwLock<Redis<S>>>) -> RedisType {
+async fn handle_psync<S: RWStream>(args: Vec<String>, redis: &RwLock<Redis<S>>) -> RedisType {
     let _ = match args.get(0) {
         Some(id) => id,
         None => return RedisType::SimpleError("ERR invalid id".to_string()),

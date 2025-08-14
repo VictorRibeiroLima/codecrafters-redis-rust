@@ -1,4 +1,4 @@
-use std::{str::FromStr, sync::Arc};
+use std::str::FromStr;
 
 use tokio::{io::AsyncWrite, sync::RwLock};
 
@@ -31,7 +31,7 @@ pub enum CommandReturn {
 
 struct HandlerParams<'a, W: AsyncWrite + Unpin, S: RWStream> {
     args: Vec<String>,
-    redis: &'a Arc<RwLock<Redis<S>>>,
+    redis: &'a RwLock<Redis<S>>,
     writer: W,
     should_reply: bool,
 }
@@ -131,7 +131,7 @@ impl Into<RedisType> for Command {
 pub async fn handle_command<'a, W: AsyncWrite + Unpin, S: RWStream>(
     command: Command,
     args: Vec<String>,
-    redis: &'a Arc<RwLock<Redis<S>>>,
+    redis: &'a RwLock<Redis<S>>,
     writer: W,
     should_reply: bool,
 ) -> CommandReturn {

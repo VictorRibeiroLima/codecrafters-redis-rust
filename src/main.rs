@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 // Uncomment this block to pass the first stage
 use anyhow::Result;
 
@@ -8,6 +6,8 @@ use tokio::{
     net::{TcpListener, TcpStream},
     sync::RwLock,
 };
+
+use crate::redis::Redis;
 
 mod args;
 mod client;
@@ -23,10 +23,11 @@ async fn main() -> Result<()> {
     let listener = TcpListener::bind(addr).await?;
     let redis = redis::Redis::new(args.into());
 
-    let redis = Arc::new(RwLock::new(redis));
+    let redis = RwLock::new(redis);
+
+    let redis: &'static RwLock<Redis<TcpStream>> = Box::leak(Box::new(redis));
 
     if !redis.read().await.is_master() {
-        let redis = Arc::clone(&redis);
         tokio::spawn(async move {
             let stream = redis
                 .read()
@@ -37,7 +38,7 @@ async fn main() -> Result<()> {
             let client = Client {
                 stream,
                 should_reply: false,
-                redis,
+                redis: &redis,
                 addr: None,
                 hand_shake_port: None,
             };
@@ -47,17 +48,16 @@ async fn main() -> Result<()> {
         });
     }
 
-    tokio::spawn(start_expiration_thread(Arc::clone(&redis)));
+    tokio::spawn(start_expiration_thread(&redis));
 
     loop {
         let (stream, client_addr) = listener.accept().await?;
 
-        let redis = Arc::clone(&redis);
         let stream = tokio::io::BufReader::new(stream);
         let client = Client {
             stream,
             should_reply: true,
-            redis,
+            redis: &redis,
             addr: Some(client_addr),
             hand_shake_port: None,
         };
@@ -69,7 +69,7 @@ async fn main() -> Result<()> {
     }
 }
 
-async fn start_expiration_thread(redis: Arc<RwLock<redis::Redis<TcpStream>>>) {
+async fn start_expiration_thread(redis: &'static RwLock<redis::Redis<TcpStream>>) {
     loop {
         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
         let mut redis = redis.write().await;

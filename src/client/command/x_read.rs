@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use tokio::{io::AsyncWrite, sync::RwLock};
 
 use crate::redis::{replication::RWStream, types::RedisType, value::ValueType, Redis};
@@ -13,7 +11,7 @@ enum IdType {
 }
 
 impl IdType {
-    async fn to_id<S: RWStream>(self, key: &str, redis: &Arc<RwLock<Redis<S>>>) -> (u64, u64) {
+    async fn to_id<S: RWStream>(self, key: &str, redis: &RwLock<Redis<S>>) -> (u64, u64) {
         match self {
             IdType::Id(first, second) => (first, second),
             IdType::Last => {

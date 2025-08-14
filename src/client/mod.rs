@@ -1,4 +1,4 @@
-use std::{net::SocketAddr, sync::Arc};
+use std::net::SocketAddr;
 
 use anyhow::Result;
 use tokio::{
@@ -19,15 +19,15 @@ mod command;
 
 impl RWStream for TcpStream {}
 
-pub struct Client {
+pub struct Client<'a> {
     pub stream: BufReader<TcpStream>,
     pub should_reply: bool,
-    pub redis: Arc<RwLock<Redis<TcpStream>>>,
+    pub redis: &'a RwLock<Redis<TcpStream>>,
     pub addr: Option<SocketAddr>,
     pub hand_shake_port: Option<u16>,
 }
 
-impl Client {
+impl Client<'_> {
     pub async fn handle_stream(mut self) -> Result<()> {
         let mut buf = [0; 512];
 
